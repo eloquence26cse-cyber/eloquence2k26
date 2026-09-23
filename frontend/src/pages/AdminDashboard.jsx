@@ -68,7 +68,10 @@ import {
   FaCrown,
   FaWhatsapp,
   FaPhoneAlt,
-  FaBell
+  FaBell,
+  FaFire,
+  FaCrosshairs,
+  FaMagic
 } from 'react-icons/fa';
 import defaultEvents from '../data/events.js';
 import rulesData from '../data/rules.js';
@@ -76,6 +79,7 @@ import { getEventBanner, defaultEventImages } from '../data/eventImages.js';
 import { getApiUrl } from '../config/api';
 import ParticipantVerifier from '../components/ParticipantVerifier.jsx';
 import RegistrationVerification from '../components/RegistrationVerification.jsx';
+import PaymentScreenshotViewerModal from '../components/PaymentScreenshotViewerModal.jsx';
 import EventRegistrationCharts from '../components/EventRegistrationCharts.jsx';
 import {
   fetchAdminHomepageCoordinators,
@@ -313,6 +317,11 @@ export default function AdminDashboard({ token, user, onLogout }) {
   const [rulesInputMode, setRulesInputMode] = useState('list'); // 'list' | 'bulk'
   const [bulkRulesText, setBulkRulesText] = useState('');
 
+  // Event Rounds State
+  const [eventRounds, setEventRounds] = useState([]);
+  const [roundsInputMode, setRoundsInputMode] = useState('list'); // 'list' | 'bulk'
+  const [bulkRoundsText, setBulkRoundsText] = useState('');
+
   const eventFileInputRef = useRef(null);
 
   // ==================== REGISTRATIONS STATE ====================
@@ -325,6 +334,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
   const [isRegDetailsModalOpen, setIsRegDetailsModalOpen] = useState(false);
   const [isOnSiteRegisterModalOpen, setIsOnSiteRegisterModalOpen] = useState(false);
   const [isDeletingRegId, setIsDeletingRegId] = useState(null);
+  const [viewerScreenshotReg, setViewerScreenshotReg] = useState(null);
 
   // UTR & Verification metrics for badge & notification queue
   const utrRegistrationsList = registrationsList.filter(r => {
@@ -345,11 +355,9 @@ export default function AdminDashboard({ token, user, onLogout }) {
 
   const [isQuickVerifyingId, setIsQuickVerifyingId] = useState(null);
 
-  const handleQuickVerifyRegistration = (reg) => {
-    const regId = reg.id || reg.ticket_code || reg.registrationId;
-    if (!regId) return;
+  const executeDirectVerifyRegistration = (regId, regTicket) => {
     setIsQuickVerifyingId(regId);
-    const toastId = toast.loading(`Verifying participant #${reg.ticket_code || regId}...`);
+    const toastId = toast.loading(`Verifying participant #${regTicket || regId}...`);
 
     fetch(getApiUrl(`/api/admin/registrations/${regId}/verify`), {
       method: 'PATCH',
@@ -366,9 +374,9 @@ export default function AdminDashboard({ token, user, onLogout }) {
       .then(res => res.json())
       .then(resData => {
         if (resData.success) {
-          toast.success(`Participant #${reg.ticket_code || regId} verified successfully!`, { id: toastId });
+          toast.success(`Participant #${regTicket || regId} verified successfully!`, { id: toastId });
           setRegistrationsList(prev => prev.map(item => {
-            const matchId = item.id === reg.id || item.ticket_code === reg.ticket_code || item.registrationId === reg.registrationId;
+            const matchId = item.id === regId || item.ticket_code === regTicket || item.registrationId === regId;
             if (matchId) {
               return {
                 ...item,
@@ -388,12 +396,56 @@ export default function AdminDashboard({ token, user, onLogout }) {
         }
       })
       .catch(err => {
-        console.error('Quick verify error:', err);
-        toast.error('Network error while verifying', { id: toastId });
+        console.error('Error verifying registration:', err);
+        toast.error('Network error verifying registration', { id: toastId });
       })
       .finally(() => {
         setIsQuickVerifyingId(null);
       });
+  };
+
+  // Helper to extract Payment Screenshot Path from record or venue_snapshot
+  const getRegScreenshot = (r) => {
+    if (!r) return null;
+    if (r.payment_screenshot_path) return r.payment_screenshot_path;
+    if (r.paymentScreenshotPath) return r.paymentScreenshotPath;
+    if (r.screenshotPath) return r.screenshotPath;
+    if (r.screenshot_path) return r.screenshot_path;
+    if (r.venue_snapshot) {
+      try {
+        const snap = typeof r.venue_snapshot === 'string' ? JSON.parse(r.venue_snapshot) : r.venue_snapshot;
+        if (snap) {
+          return snap.payment_screenshot_path || snap.paymentScreenshotPath || snap.screenshotPath || null;
+        }
+      } catch (e) {}
+    }
+    return null;
+  };
+
+  const handleQuickVerifyRegistration = (reg) => {
+    const regId = typeof reg === 'string' ? reg : (reg.id || reg.ticket_code || reg.registrationId);
+    if (!regId) return;
+
+    const regObj = typeof reg === 'object' && reg !== null ? reg : registrationsList.find(r => r.id === regId || r.ticket_code === regId);
+    const fee = Number(regObj?.totalAmount || regObj?.totalFee || regObj?.total_fee || 0);
+    const hasScreenshot = Boolean(getRegScreenshot(regObj));
+
+    if (fee > 0) {
+      if (hasScreenshot) {
+        // Open screenshot viewer modal so admin inspects payment proof before verifying
+        setViewerScreenshotReg(regObj);
+        return;
+      } else {
+        toast.error('Cannot verify: Payment screenshot has not been uploaded for this paid registration. Participant must provide payment proof.', {
+          icon: <FaExclamationTriangle style={{ color: '#ef4444' }} />,
+          duration: 5000
+        });
+        return;
+      }
+    }
+
+    // Free event without fee: verify directly
+    executeDirectVerifyRegistration(regId, regObj?.ticket_code || regId);
   };
 
   // Registration Analytics & Event Helpers
@@ -2214,6 +2266,97 @@ export default function AdminDashboard({ token, user, onLogout }) {
     });
   };
 
+  // ── Round Management Handlers ──
+  const handleAddRound = () => {
+    setEventRounds(prev => [
+      ...prev,
+      { name: `Round ${prev.length + 1}`, time: '', desc: '' }
+    ]);
+  };
+
+  const handleRoundChange = (index, field, value) => {
+    setEventRounds(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  };
+
+  const handleRemoveRound = (index) => {
+    setEventRounds(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleMoveRound = (index, direction) => {
+    setEventRounds(prev => {
+      if ((direction === 'up' && index === 0) || (direction === 'down' && index === prev.length - 1)) return prev;
+      const copy = [...prev];
+      const target = direction === 'up' ? index - 1 : index + 1;
+      const tmp = copy[index];
+      copy[index] = copy[target];
+      copy[target] = tmp;
+      return copy;
+    });
+  };
+
+  const formatRoundsToBulkText = (rounds) => {
+    if (!Array.isArray(rounds)) return '';
+    return rounds
+      .map(r => {
+        if (typeof r === 'string') return r;
+        const name = (r.name || r.title || '').trim();
+        const time = (r.time || r.duration || '').trim();
+        const desc = (r.desc || r.description || '').trim();
+        if (time && desc) return `${name} | ${time} | ${desc}`;
+        if (time) return `${name} | ${time}`;
+        if (desc) return `${name} | ${desc}`;
+        return name;
+      })
+      .filter(Boolean)
+      .join('\n');
+  };
+
+  const parseBulkRounds = (text) => {
+    if (!text || typeof text !== 'string') return [];
+    return text
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .map(line => {
+        let clean = line.replace(/^(\d+[\.\)]\s*|[-*•]\s*)/, '').trim();
+        if (!clean) return null;
+
+        if (clean.includes('|')) {
+          const parts = clean.split('|').map(p => p.trim());
+          if (parts.length >= 3) {
+            return { name: parts[0], time: parts[1], desc: parts.slice(2).join(' | ') };
+          } else if (parts.length === 2) {
+            const isDuration = /\b(min|mins|minutes|hour|hours|hr|hrs|am|pm)\b/i.test(parts[1]);
+            if (isDuration) {
+              return { name: parts[0], time: parts[1], desc: '' };
+            }
+            return { name: parts[0], time: '', desc: parts[1] };
+          }
+        }
+
+        if (clean.includes(':')) {
+          const colonIdx = clean.indexOf(':');
+          const namePart = clean.substring(0, colonIdx).trim();
+          const restPart = clean.substring(colonIdx + 1).trim();
+          const timeMatch = restPart.match(/\(([^)]*(?:min|mins|hour|hours|hr|hrs|am|pm)[^)]*)\)/i);
+          let time = '';
+          let desc = restPart;
+          if (timeMatch) {
+            time = timeMatch[1].trim();
+            desc = restPart.replace(timeMatch[0], '').trim();
+          }
+          return { name: namePart, time, desc };
+        }
+
+        return { name: clean, time: '', desc: '' };
+      })
+      .filter(Boolean);
+  };
+
   const resetEventEditModal = () => {
     setEditingEvent(null);
     setEventName('');
@@ -2234,6 +2377,9 @@ export default function AdminDashboard({ token, user, onLogout }) {
     setEventRules([]);
     setBulkRulesText('');
     setRulesInputMode('list');
+    setEventRounds([]);
+    setBulkRoundsText('');
+    setRoundsInputMode('list');
     setIsEventEditModalOpen(false);
     if (eventFileInputRef.current) eventFileInputRef.current.value = '';
     if (venueFileInputRef.current) venueFileInputRef.current.value = '';
@@ -2250,6 +2396,9 @@ export default function AdminDashboard({ token, user, onLogout }) {
     setEventRules(['']);
     setBulkRulesText('');
     setRulesInputMode('list');
+    setEventRounds([{ name: 'Round 1: Preliminary Round', time: '30 Mins', desc: '' }]);
+    setBulkRoundsText('Round 1: Preliminary Round | 30 Mins');
+    setRoundsInputMode('list');
     setIsEventEditModalOpen(true);
   };
 
@@ -2277,6 +2426,28 @@ export default function AdminDashboard({ token, user, onLogout }) {
     setEventRules(initialRules);
     setBulkRulesText(initialRules.join('\n'));
     setRulesInputMode('list');
+
+    const existingRounds = (Array.isArray(eventItem.rounds) && eventItem.rounds.length > 0)
+      ? eventItem.rounds
+      : (rulesData[eventItem.id]?.rounds || []);
+    const normalizedRounds = existingRounds.map((r, i) => {
+      if (typeof r === 'string') {
+        const parts = r.split(':');
+        if (parts.length > 1) {
+          return { name: parts[0].trim(), time: '', desc: parts.slice(1).join(':').trim() };
+        }
+        return { name: r.trim(), time: '', desc: '' };
+      }
+      return {
+        name: r.name || r.title || `Round ${i + 1}`,
+        time: r.time || r.duration || '',
+        desc: r.desc || r.description || ''
+      };
+    });
+    const initialRounds = normalizedRounds.length > 0 ? normalizedRounds : [{ name: 'Round 1: Preliminary Round', time: '', desc: '' }];
+    setEventRounds(initialRounds);
+    setBulkRoundsText(formatRoundsToBulkText(initialRounds));
+    setRoundsInputMode('list');
 
     setIsEventEditModalOpen(true);
   };
@@ -2394,6 +2565,18 @@ export default function AdminDashboard({ token, user, onLogout }) {
       .map(r => (typeof r === 'string' ? r.replace(/^(\d+[\.\)]\s*|[-*•]\s*)/, '').trim() : ''))
       .filter(r => r.length > 0);
 
+    const activeRoundsList = roundsInputMode === 'bulk' ? parseBulkRounds(bulkRoundsText) : eventRounds;
+    const cleanedRounds = activeRoundsList
+      .map(r => {
+        if (typeof r === 'string') return { name: r.trim(), time: '', desc: '' };
+        return {
+          name: (r.name || r.title || '').trim(),
+          time: (r.time || r.duration || '').trim(),
+          desc: (r.desc || r.description || '').trim()
+        };
+      })
+      .filter(r => r.name.length > 0 || r.desc.length > 0);
+
     const loadingToast = toast.loading(editingEvent ? 'Saving event changes...' : 'Creating new event...');
     const url = editingEvent ? getApiUrl(`/api/admin/events/${editingEvent.id}`) : getApiUrl('/api/admin/events');
     const method = editingEvent ? 'PUT' : 'POST';
@@ -2411,7 +2594,8 @@ export default function AdminDashboard({ token, user, onLogout }) {
       tag: eventTag.trim() || (eventCategory === 'technical' ? 'Technical Presentation' : 'Non-Technical Event'),
       description: eventDesc.trim(),
       image: eventImage.trim(),
-      rules: cleanedRules
+      rules: cleanedRules,
+      rounds: cleanedRounds
     };
 
     fetch(url, {
@@ -4015,8 +4199,12 @@ export default function AdminDashboard({ token, user, onLogout }) {
                                     disabled={isVerifying}
                                     onClick={() => handleQuickVerifyRegistration(reg)}
                                     style={{
-                                      background: '#059669',
-                                      color: '#ffffff',
+                                      background: getRegScreenshot(reg)
+                                        ? '#059669'
+                                        : (Number(reg.totalAmount || reg.totalFee || reg.total_fee || 0) > 0 ? (isDark ? '#374151' : '#cbd5e1') : '#059669'),
+                                      color: (getRegScreenshot(reg) || Number(reg.totalAmount || reg.totalFee || reg.total_fee || 0) === 0)
+                                        ? '#ffffff'
+                                        : (isDark ? '#9ca3af' : '#475569'),
                                       border: 'none',
                                       borderRadius: '8px',
                                       padding: '0.45rem 0.85rem',
@@ -4029,10 +4217,23 @@ export default function AdminDashboard({ token, user, onLogout }) {
                                       boxShadow: '0 2px 6px rgba(5,150,105,0.3)',
                                       transition: 'all 0.15s ease'
                                     }}
-                                    title="Click to Verify & Confirm this registration immediately"
+                                    title={
+                                      getRegScreenshot(reg)
+                                        ? 'View payment screenshot & verify participant'
+                                        : (Number(reg.totalAmount || reg.totalFee || reg.total_fee || 0) > 0 ? 'Cannot verify: Screenshot proof missing' : 'Confirm registration')
+                                    }
                                   >
-                                    <FaCheckCircle size={12} />
-                                    <span>{isVerifying ? 'Verifying...' : 'Verify Now'}</span>
+                                    {getRegScreenshot(reg) ? (
+                                      <>
+                                        <FaImage size={12} />
+                                        <span>View &amp; Verify</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <FaCheckCircle size={12} />
+                                        <span>{isVerifying ? 'Verifying...' : 'Verify Now'}</span>
+                                      </>
+                                    )}
                                   </button>
 
                                   <button
@@ -4413,6 +4614,26 @@ export default function AdminDashboard({ token, user, onLogout }) {
                                   title={isLeadCoordinator ? "Click to view rules" : "Click to view and edit rules"}
                                 >
                                   <FaListOl size={8} /> {((Array.isArray(evt.rules) && evt.rules.length) || rulesData[evt.id]?.rules?.length || 0)} Rules
+                                </span>
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    fontSize: '0.65rem',
+                                    fontWeight: '600',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    background: isDark ? 'rgba(14, 165, 233, 0.15)' : '#f0f9ff',
+                                    color: isDark ? '#38bdf8' : '#0284c7',
+                                    border: isDark ? '1px solid rgba(14, 165, 233, 0.3)' : '1px solid #bae6fd',
+                                    marginLeft: '4px',
+                                    cursor: 'pointer'
+                                  }}
+                                  onClick={(e) => { e.stopPropagation(); handleOpenEditEventModal(evt); }}
+                                  title={isLeadCoordinator ? "Click to view rounds" : "Click to view and edit rounds"}
+                                >
+                                  <FaLayerGroup size={8} /> {((Array.isArray(evt.rounds) && evt.rounds.length) || rulesData[evt.id]?.rounds?.length || 0)} Rounds
                                 </span>
                               </div>
                             </div>
@@ -5124,10 +5345,10 @@ export default function AdminDashboard({ token, user, onLogout }) {
                               {ev.id === 'nontech-05' && (
                                 <>
                                   <span style={{ fontSize: '0.72rem', fontWeight: '700', padding: '0.15rem 0.5rem', borderRadius: '4px', background: isDark ? 'rgba(234, 88, 12, 0.2)' : '#ffedd5', color: isDark ? '#fdba74' : '#c2410c', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    🔥 FF: {eventMembers.filter(c => (c.game || '').toLowerCase().includes('fire') || (c.game || '').toLowerCase().includes('both')).length}
+                                    <FaFire style={{ color: '#ea580c' }} /> FF: {eventMembers.filter(c => (c.game || '').toLowerCase().includes('fire') || (c.game || '').toLowerCase().includes('both')).length}
                                   </span>
                                   <span style={{ fontSize: '0.72rem', fontWeight: '700', padding: '0.15rem 0.5rem', borderRadius: '4px', background: isDark ? 'rgba(6, 182, 212, 0.2)' : '#cffafe', color: isDark ? '#67e8f9' : '#0891b2', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    🎯 BGMI: {eventMembers.filter(c => (c.game || '').toLowerCase().includes('bgmi') || (c.game || '').toLowerCase().includes('both')).length}
+                                    <FaCrosshairs style={{ color: '#0891b2' }} /> BGMI: {eventMembers.filter(c => (c.game || '').toLowerCase().includes('bgmi') || (c.game || '').toLowerCase().includes('both')).length}
                                   </span>
                                 </>
                               )}
@@ -5224,9 +5445,15 @@ export default function AdminDashboard({ token, user, onLogout }) {
                                                   : 'rgba(124, 58, 237, 0.4)'
                                               }`
                                             }}>
-                                              {(coord.game || '').toLowerCase().includes('fire') && '🔥 Free Fire'}
-                                              {(coord.game || '').toLowerCase().includes('bgmi') && '🎯 BGMI'}
-                                              {!(coord.game || '').toLowerCase().includes('fire') && !(coord.game || '').toLowerCase().includes('bgmi') && '🎮 ' + coord.game}
+                                              {(coord.game || '').toLowerCase().includes('fire') && (
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><FaFire style={{ color: '#ea580c' }} /> Free Fire</span>
+                                              )}
+                                              {(coord.game || '').toLowerCase().includes('bgmi') && (
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><FaCrosshairs style={{ color: '#0891b2' }} /> BGMI</span>
+                                              )}
+                                              {!(coord.game || '').toLowerCase().includes('fire') && !(coord.game || '').toLowerCase().includes('bgmi') && (
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><FaGamepad /> {coord.game}</span>
+                                              )}
                                             </span>
                                           )}
                                         </div>
@@ -5472,7 +5699,13 @@ export default function AdminDashboard({ token, user, onLogout }) {
                                             background: (coord.game || '').toLowerCase().includes('fire') ? '#ea580c' : (coord.game || '').toLowerCase().includes('bgmi') ? '#0891b2' : '#7c3aed',
                                             color: '#ffffff'
                                           }}>
-                                            {(coord.game || '').toLowerCase().includes('fire') ? '🔥 FF' : (coord.game || '').toLowerCase().includes('bgmi') ? '🎯 BGMI' : '🎮 ' + coord.game}
+                                            {(coord.game || '').toLowerCase().includes('fire') ? (
+                                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><FaFire size={9} /> FF</span>
+                                            ) : (coord.game || '').toLowerCase().includes('bgmi') ? (
+                                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><FaCrosshairs size={9} /> BGMI</span>
+                                            ) : (
+                                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><FaGamepad size={9} /> {coord.game}</span>
+                                            )}
                                           </span>
                                         )}
                                       </span>
@@ -6992,6 +7225,21 @@ export default function AdminDashboard({ token, user, onLogout }) {
                             {/* Actions */}
                             <td style={{ ...S.td, textAlign: 'center' }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                {getRegScreenshot(reg) && (
+                                  <button
+                                    onClick={() => setViewerScreenshotReg(reg)}
+                                    style={{
+                                      ...S.actionBtnView,
+                                      background: isDark ? 'rgba(2, 132, 199, 0.15)' : '#eff6ff',
+                                      color: '#0284c7',
+                                      borderColor: isDark ? 'rgba(56, 189, 248, 0.4)' : '#bfdbfe'
+                                    }}
+                                    title="View payment screenshot"
+                                  >
+                                    <FaImage size={11} />
+                                    <span>Proof</span>
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => {
                                     setSelectedRegDetails(reg);
@@ -7747,7 +7995,9 @@ export default function AdminDashboard({ token, user, onLogout }) {
                       textTransform: 'uppercase',
                       alignSelf: 'flex-start'
                     }}>
-                      ⚡ Live Homepage Hero Preview (When Closed):
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        <FaBolt style={{ color: '#eab308' }} /> Live Homepage Hero Preview (When Closed):
+                      </span>
                     </div>
 
                     {/* Red Marquee Capsule Pill Preview */}
@@ -8644,6 +8894,291 @@ export default function AdminDashboard({ token, user, onLogout }) {
                     </div>
                   )}
                 </div>
+
+                {/* Event Rounds & Competition Stages Management */}
+                <div style={{
+                  marginTop: '0.85rem',
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  background: isDark ? 'rgba(31, 41, 55, 0.45)' : 'rgba(248, 250, 252, 0.95)',
+                  border: isDark ? '1px solid #374151' : '1px solid #e2e8f0'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <FaLayerGroup style={{ color: isDark ? '#38bdf8' : '#0284c7' }} />
+                      <label style={{ ...S.label, margin: 0, fontSize: '0.92rem', fontWeight: '700' }}>
+                        Competition Rounds & Stages
+                      </label>
+                      <span style={{
+                        fontSize: '0.75rem',
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        background: isDark ? '#0c4a6e' : '#e0f2fe',
+                        color: isDark ? '#38bdf8' : '#0284c7',
+                        fontWeight: '700'
+                      }}>
+                        {roundsInputMode === 'bulk'
+                          ? `${parseBulkRounds(bulkRoundsText).length} Rounds`
+                          : `${eventRounds.filter(r => (r.name && r.name.trim()) || (r.desc && r.desc.trim())).length} Rounds`}
+                      </span>
+                    </div>
+
+                    {!isLeadCoordinator && (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (roundsInputMode === 'list') {
+                              setBulkRoundsText(formatRoundsToBulkText(eventRounds));
+                              setRoundsInputMode('bulk');
+                            } else {
+                              const parsed = parseBulkRounds(bulkRoundsText);
+                              setEventRounds(parsed.length > 0 ? parsed : [{ name: 'Round 1: Preliminary', time: '', desc: '' }]);
+                              setRoundsInputMode('list');
+                            }
+                          }}
+                          style={{
+                            padding: '0.35rem 0.65rem',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            borderRadius: '6px',
+                            background: isDark ? '#374151' : '#f1f5f9',
+                            color: isDark ? '#e5e7eb' : '#475569',
+                            border: isDark ? '1px solid #4b5563' : '1px solid #cbd5e1',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {roundsInputMode === 'list' ? 'Switch to Bulk Paste' : 'Switch to Card View'}
+                        </button>
+
+                        {roundsInputMode === 'list' && (
+                          <button
+                            type="button"
+                            onClick={handleAddRound}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '0.35rem 0.75rem',
+                              fontSize: '0.75rem',
+                              fontWeight: '600',
+                              borderRadius: '6px',
+                              background: isDark ? '#0284c7' : '#0ea5e9',
+                              color: '#ffffff',
+                              border: 'none',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <FaPlus size={10} /> Add Round
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <p style={{ ...S.inputHelper, marginBottom: '0.75rem' }}>
+                    {isLeadCoordinator
+                      ? 'Competition rounds and evaluation stages configured for this event shown below:'
+                      : 'Configure the stages, timings, and rules for each round. These synchronize live with the Round Structure card on the participant event details page.'}
+                  </p>
+
+                  {roundsInputMode === 'list' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {eventRounds.map((rnd, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            padding: '0.85rem',
+                            borderRadius: '8px',
+                            background: isDark ? 'rgba(17, 24, 39, 0.75)' : '#ffffff',
+                            border: isDark ? '1px solid #374151' : '1px solid #e2e8f0',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px'
+                          }}
+                        >
+                          {/* Top Row: Round Badge and Actions */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{
+                              fontSize: '0.72rem',
+                              fontWeight: '800',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              background: isDark ? '#1e293b' : '#e2e8f0',
+                              color: isDark ? '#38bdf8' : '#0284c7',
+                              letterSpacing: '0.04em'
+                            }}>
+                              ROUND {idx + 1}
+                            </span>
+
+                            {!isLeadCoordinator && (
+                              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveRound(idx, 'up')}
+                                  disabled={idx === 0}
+                                  style={{
+                                    padding: '3px 6px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: idx === 0 ? '#6b7280' : (isDark ? '#9ca3af' : '#64748b'),
+                                    cursor: idx === 0 ? 'default' : 'pointer',
+                                    opacity: idx === 0 ? 0.3 : 1
+                                  }}
+                                  title="Move round up"
+                                >
+                                  ▲
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveRound(idx, 'down')}
+                                  disabled={idx === eventRounds.length - 1}
+                                  style={{
+                                    padding: '3px 6px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: idx === eventRounds.length - 1 ? '#6b7280' : (isDark ? '#9ca3af' : '#64748b'),
+                                    cursor: idx === eventRounds.length - 1 ? 'default' : 'pointer',
+                                    opacity: idx === eventRounds.length - 1 ? 0.3 : 1
+                                  }}
+                                  title="Move round down"
+                                >
+                                  ▼
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveRound(idx)}
+                                  style={{
+                                    padding: '3px 6px',
+                                    background: isDark ? '#451a1a' : '#fee2e2',
+                                    border: isDark ? '1px solid #7f1d1d' : '1px solid #fecaca',
+                                    color: '#ef4444',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Delete round"
+                                >
+                                  <FaTrash size={10} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Round Name & Duration inputs */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr', gap: '8px' }}>
+                            <div>
+                              <input
+                                type="text"
+                                value={rnd.name || ''}
+                                onChange={(e) => handleRoundChange(idx, 'name', e.target.value)}
+                                placeholder="Round Title / Name (e.g. Preliminary Screening)"
+                                disabled={isLeadCoordinator}
+                                readOnly={isLeadCoordinator}
+                                style={{ ...S.input, padding: '0.45rem 0.65rem', fontSize: '0.82rem', width: '100%' }}
+                              />
+                            </div>
+                            <div>
+                              <input
+                                type="text"
+                                value={rnd.time || ''}
+                                onChange={(e) => handleRoundChange(idx, 'time', e.target.value)}
+                                placeholder="Timing (e.g. 30 Mins)"
+                                disabled={isLeadCoordinator}
+                                readOnly={isLeadCoordinator}
+                                style={{ ...S.input, padding: '0.45rem 0.65rem', fontSize: '0.82rem', width: '100%' }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Description / Evaluation details */}
+                          <div>
+                            <textarea
+                              value={rnd.desc || ''}
+                              onChange={(e) => handleRoundChange(idx, 'desc', e.target.value)}
+                              placeholder="Round objectives, challenge format, or evaluation criteria..."
+                              rows={2}
+                              disabled={isLeadCoordinator}
+                              readOnly={isLeadCoordinator}
+                              style={{ ...S.input, padding: '0.45rem 0.65rem', fontSize: '0.82rem', width: '100%', resize: 'vertical' }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+
+                      {eventRounds.length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '1rem', color: isDark ? '#9ca3af' : '#64748b', fontSize: '0.85rem' }}>
+                          No rounds listed for this event.
+                        </div>
+                      )}
+
+                      {!isLeadCoordinator && (
+                        <button
+                          type="button"
+                          onClick={handleAddRound}
+                          style={{
+                            marginTop: '4px',
+                            alignSelf: 'flex-start',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '0.45rem 0.85rem',
+                            borderRadius: '6px',
+                            background: isDark ? '#1f2937' : '#f8fafc',
+                            border: isDark ? '1px dashed #4b5563' : '1px dashed #cbd5e1',
+                            color: isDark ? '#38bdf8' : '#0284c7',
+                            fontSize: '0.82rem',
+                            fontWeight: '600',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <FaPlus size={10} /> Add Another Round
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <textarea
+                        value={bulkRoundsText}
+                        onChange={(e) => setBulkRoundsText(e.target.value)}
+                        rows={6}
+                        placeholder={"Format: Round Name | Duration | Description\ne.g.\nRound 1: Rapid Fire MCQs | 15 Mins | 30 fast-paced technical questions\nRound 2: Live Coding Challenge | 45 Mins | Fix broken code snippets and solve algorithms"}
+                        style={{
+                          ...S.input,
+                          width: '100%',
+                          fontFamily: 'monospace',
+                          fontSize: '0.82rem',
+                          lineHeight: '1.5',
+                          resize: 'vertical'
+                        }}
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                        <span style={{ fontSize: '0.75rem', color: isDark ? '#9ca3af' : '#64748b' }}>
+                          Separate Title, Duration, and Description using "|" or ":".
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const parsed = parseBulkRounds(bulkRoundsText);
+                            setEventRounds(parsed.length > 0 ? parsed : [{ name: 'Round 1', time: '', desc: '' }]);
+                            setRoundsInputMode('list');
+                          }}
+                          style={{
+                            padding: '0.3rem 0.65rem',
+                            fontSize: '0.75rem',
+                            borderRadius: '6px',
+                            background: isDark ? '#374151' : '#e2e8f0',
+                            color: isDark ? '#f3f4f6' : '#1e293b',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: '600'
+                          }}
+                        >
+                          Apply to List
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div style={isLeadCoordinator ? { ...S.modalFooter, justifyContent: 'flex-end' } : S.modalFooter}>
@@ -9311,7 +9846,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
                       <label style={{ ...S.label, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '6px', color: isDark ? '#fdba74' : '#c2410c', fontWeight: '800' }}>
-                        <span>🎮 Battle of Champions Game Track *</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><FaGamepad /> Battle of Champions Game Track *</span>
                         <span style={{ fontSize: '0.72rem', fontWeight: '600', padding: '0.1rem 0.4rem', borderRadius: '4px', background: isDark ? '#374151' : '#ffedd5' }}>Required</span>
                       </label>
                       <span style={{ fontSize: '0.74rem', color: isDark ? '#9ca3af' : '#64748b' }}>
@@ -9347,7 +9882,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
                           transform: coordGame === 'Free Fire' ? 'scale(1.02)' : 'scale(1)'
                         }}
                       >
-                        <span style={{ fontSize: '1rem' }}>🔥</span>
+                        <FaFire size={15} color={coordGame === 'Free Fire' ? '#ea580c' : (isDark ? '#fdba74' : '#c2410c')} />
                         <span>Free Fire</span>
                         {coordGame === 'Free Fire' && <FaCheckCircle size={13} color="#ea580c" />}
                       </button>
@@ -9379,7 +9914,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
                           transform: coordGame === 'BGMI' ? 'scale(1.02)' : 'scale(1)'
                         }}
                       >
-                        <span style={{ fontSize: '1rem' }}>🎯</span>
+                        <FaCrosshairs size={15} color={coordGame === 'BGMI' ? '#0891b2' : (isDark ? '#67e8f9' : '#0e7490')} />
                         <span>BGMI</span>
                         {coordGame === 'BGMI' && <FaCheckCircle size={13} color="#0891b2" />}
                       </button>
@@ -9411,7 +9946,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
                           transform: coordGame === 'Both' ? 'scale(1.02)' : 'scale(1)'
                         }}
                       >
-                        <span style={{ fontSize: '1rem' }}>🎮</span>
+                        <FaGamepad size={15} color={coordGame === 'Both' ? '#7c3aed' : (isDark ? '#d8b4fe' : '#6d28d9')} />
                         <span>Both (FF & BGMI)</span>
                         {coordGame === 'Both' && <FaCheckCircle size={13} color="#7c3aed" />}
                       </button>
@@ -9616,6 +10151,37 @@ export default function AdminDashboard({ token, user, onLogout }) {
                     </div>
                   </div>
                   <div>
+                    <div style={S.label}>Payment Screenshot</div>
+                    <div style={{ marginTop: '4px' }}>
+                      {getRegScreenshot(selectedRegDetails) ? (
+                        <button
+                          type="button"
+                          onClick={() => setViewerScreenshotReg(selectedRegDetails)}
+                          style={{
+                            background: 'rgba(2, 132, 199, 0.15)',
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            color: '#38bdf8',
+                            padding: '0.3rem 0.75rem',
+                            borderRadius: '6px',
+                            fontSize: '0.8rem',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}
+                        >
+                          <FaImage size={11} />
+                          <span>View Screenshot</span>
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: '0.82rem', color: isDark ? '#64748b' : '#94a3b8', fontStyle: 'italic' }}>
+                          Screenshot: Not uploaded
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
                     <div style={S.label}>Registered At</div>
                     <div style={{ fontWeight: '500', fontSize: '0.88rem', color: isDark ? '#cbd5e1' : '#475569', marginTop: '3px' }}>
                       {selectedRegDetails.created_at 
@@ -9715,7 +10281,18 @@ export default function AdminDashboard({ token, user, onLogout }) {
             </div>
 
             <div style={{ ...S.modalFooter, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {getRegScreenshot(selectedRegDetails) && (
+                  <button
+                    type="button"
+                    onClick={() => setViewerScreenshotReg(selectedRegDetails)}
+                    style={{ ...S.filterBtn, background: isDark ? 'rgba(2, 132, 199, 0.2)' : '#eff6ff', color: '#0284c7', borderColor: '#38bdf8' }}
+                    title="View uploaded payment screenshot"
+                  >
+                    <FaImage size={11} />
+                    <span>View Screenshot</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => handlePrintTicket(selectedRegDetails)}
@@ -10104,7 +10681,9 @@ export default function AdminDashboard({ token, user, onLogout }) {
                               alignItems: 'center',
                               gap: '5px'
                             }}>
-                              <span>✨ Suggested: <strong>{smartThemeSuggestion.name}</strong></span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <FaMagic style={{ color: '#eab308' }} /> Suggested: <strong>{smartThemeSuggestion.name}</strong>
+                              </span>
                               {!isSuggestedSelected && !isLeadCoordinator && (
                                 <button
                                   type="button"
@@ -10191,13 +10770,13 @@ export default function AdminDashboard({ token, user, onLogout }) {
                                     </span>
                                   </div>
                                   {isSelected && (
-                                    <span style={{
-                                      fontSize: '0.72rem',
-                                      fontWeight: '800',
-                                      color: theme.primaryColor
-                                    }}>
-                                      ✓
-                                    </span>
+                                    <FaCheck
+                                      size={11}
+                                      style={{
+                                        color: theme.primaryColor,
+                                        flexShrink: 0
+                                      }}
+                                    />
                                   )}
                                 </div>
 
@@ -11117,6 +11696,26 @@ export default function AdminDashboard({ token, user, onLogout }) {
           </div>
         </div>
       )}
+
+      {/* Payment Screenshot Viewer Modal */}
+      <PaymentScreenshotViewerModal
+        registration={viewerScreenshotReg}
+        token={token}
+        isOpen={Boolean(viewerScreenshotReg)}
+        onClose={() => setViewerScreenshotReg(null)}
+        onVerify={async (reg) => {
+          const id = reg.id || reg.registrationId || reg.ticket_code;
+          const ticket = reg.ticket_code || reg.ticketCode || id;
+          executeDirectVerifyRegistration(id, ticket);
+          setViewerScreenshotReg(null);
+        }}
+        onReject={async (reg) => {
+          const id = reg.id || reg.registrationId || reg.ticket_code;
+          await handleQuickVerifyRegistration(id, 'flagged');
+          setViewerScreenshotReg(null);
+        }}
+        isDark={isDark}
+      />
     </div>
   );
 }

@@ -38,7 +38,9 @@ import {
   FaUndo,
   FaSearch,
   FaCheck,
-  FaIdCard
+  FaIdCard,
+  FaFire,
+  FaCrosshairs
 } from 'react-icons/fa';
 import defaultEvents from '../data/events.js';
 import { getApiUrl } from '../config/api';
@@ -1255,8 +1257,8 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                         <FaUsers /> {onSiteTicketResult.teamName ? `Team: ${onSiteTicketResult.teamName}` : 'Registered Team Members'}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        <span style={{ fontSize: '0.78rem', background: '#10b981', color: '#ffffff', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: '700' }}>
-                          👑 {onSiteTicketResult.leadName || onSiteTicketResult.fullName} (Lead)
+                        <span style={{ fontSize: '0.78rem', background: '#10b981', color: '#ffffff', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                          <FaCrown size={11} /> {onSiteTicketResult.leadName || onSiteTicketResult.fullName} (Lead)
                         </span>
                         {onSiteTicketResult.teamMembersList.map((m, idx) => (
                           <span key={idx} style={{ fontSize: '0.78rem', background: isDark ? 'rgba(255,255,255,0.08)' : '#e2e8f0', color: isDark ? '#ffffff' : '#0f172a', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: '600' }}>
@@ -1460,7 +1462,15 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                                       color: onSiteGame === gameOption ? (isDark ? '#ffffff' : '#1e40af') : (isDark ? '#9ca3af' : '#475569')
                                     }}
                                   >
-                                    {gameOption === 'FREE FIRE' ? '🔥 FREE FIRE' : '🎯 BGMI'}
+                                    {gameOption === 'FREE FIRE' ? (
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                        <FaFire style={{ color: '#ff9d42' }} /> FREE FIRE
+                                      </span>
+                                    ) : (
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                        <FaCrosshairs style={{ color: '#38bdf8' }} /> BGMI
+                                      </span>
+                                    )}
                                   </button>
                                 ))}
                               </div>
@@ -1693,8 +1703,8 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                               }}
                             >
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '0.82rem', fontWeight: '800', color: isDark ? '#93c5fd' : '#1d4ed8' }}>
-                                  👤 Team Member #{idx + 2}
+                                <span style={{ fontSize: '0.82rem', fontWeight: '800', color: isDark ? '#93c5fd' : '#1d4ed8', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                  <FaUser size={11} /> Team Member #{idx + 2}
                                 </span>
 
                                 {(onSiteFields.teamMembers.length > ((Number(selectedOnSiteEvent.minMembers) || 2) - 1)) && (

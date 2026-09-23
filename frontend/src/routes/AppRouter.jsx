@@ -6,6 +6,7 @@ import EventsPage from '../pages/EventsPage.jsx';
 import EventRulesPage from '../pages/EventRulesPage.jsx';
 import RegistrationPage from '../pages/RegistrationPage.jsx';
 import { getCachedEvents, fetchEventsData, fetchSponsorsData } from '../services/api.js';
+import { normalizeEventId } from '../utils/eventUtils.js';
 
 const Admin = lazy(() => import('../pages/Admin.jsx'));
 
@@ -24,7 +25,8 @@ function parseHash(hash) {
 
   if (pathPart.startsWith('#/register/') || pathPart === '#/register' || pathPart.startsWith('#register')) {
     const parts = pathPart.split('/');
-    const id = parts[2] ? parts[2].trim() : null;
+    const rawId = parts[2] ? decodeURIComponent(parts[2]).trim() : null;
+    const id = normalizeEventId(rawId) || rawId;
     let game = gameParam;
     if (!game && parts[3]) {
       const g = parts[3].toLowerCase();
@@ -42,7 +44,8 @@ function parseHash(hash) {
   }
   if (pathPart.startsWith('#/events/') || pathPart.startsWith('#/event/')) {
     const parts = pathPart.split('/');
-    const id = parts[2] ? parts[2].trim() : 'tech-01';
+    const rawId = parts[2] ? decodeURIComponent(parts[2]).trim() : 'tech-01';
+    const id = normalizeEventId(rawId) || rawId || 'tech-01';
     return {
       page: 'event-rules',
       eventId: id,
@@ -111,7 +114,7 @@ export default function AppRouter() {
     }
 
     if (page === 'event-rules') {
-      const finalEventId = eventId || 'tech-01';
+      const finalEventId = normalizeEventId(eventId) || eventId || 'tech-01';
       setRoute({ page: 'event-rules', eventId: finalEventId, sectionId: null, from, categoryFilter, game: null });
 
       const queryParams = new URLSearchParams();
@@ -124,7 +127,7 @@ export default function AppRouter() {
       } catch (e) {}
       window.scrollTo({ top: 0, behavior: 'instant' });
     } else if (page === 'register') {
-      const finalEventId = eventId || null;
+      const finalEventId = normalizeEventId(eventId) || eventId || null;
       if (!finalEventId) {
         setRoute({ page: 'events', eventId: null, sectionId: null, from: null, categoryFilter: null, game: null });
         try {

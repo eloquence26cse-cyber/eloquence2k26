@@ -177,33 +177,78 @@ const coordinatorToDb = (c) => {
   };
 };
 
-const dbToEvent = (e) => ({
-  id: e.id,
-  number: e.number,
-  name: e.name,
-  alias: e.alias,
-  subtitle: e.subtitle,
-  category: e.category,
-  teamSize: e.team_size || e.teamSize,
-  minMembers: e.min_members || e.minMembers || 1,
-  maxMembers: e.max_members || e.maxMembers || 1,
-  fee: e.fee,
-  feePerHead: e.fee_per_head || e.feePerHead || 0,
-  feeType: e.fee_type || e.feeType || 'per_head',
-  isTeam: e.is_team !== false && e.isTeam !== false,
-  tag: e.tag,
-  venue: e.venue,
-  venueImage: e.venue_image || e.venueImage || '',
-  timing: e.timing,
-  description: e.description,
-  image: e.image || '',
-  rules: e.rules,
-  rounds: e.rounds,
-  guidelines: e.guidelines,
-  highlights: e.highlights,
-  createdAt: e.created_at || e.createdAt,
-  updatedAt: e.updated_at || e.updatedAt
-});
+const EVENT_TEAM_RULES = {
+  'tech-01': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members' },
+  'tech-02': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
+  'tech-03': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
+  'tech-04': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
+  'tech-05': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
+  'tech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
+  'nontech-01': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
+  'nontech-02': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members' },
+  'nontech-03': { isTeam: true, minMembers: 2, maxMembers: 4, teamSize: 'Max of 4 members' },
+  'nontech-04': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
+  'nontech-05': { isTeam: true, minMembers: 4, maxMembers: 4, teamSize: 'Only Squad Match (4 Players)' },
+  'nontech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual only' },
+  'nontech-07': { isTeam: true, minMembers: 5, maxMembers: 5, teamSize: 'Team of 5 Members' }
+};
+
+const dbToEvent = (e) => {
+  const normId = String(e.id || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
+  const rule = EVENT_TEAM_RULES[normId] || EVENT_TEAM_RULES[e.id] || null;
+
+  let isTeam = false;
+  if (rule) {
+    isTeam = rule.isTeam;
+  } else if (e.is_team !== undefined) {
+    isTeam = Boolean(e.is_team);
+  } else if (e.isTeam !== undefined) {
+    isTeam = Boolean(e.isTeam);
+  } else if (e.max_members !== undefined || e.maxMembers !== undefined) {
+    isTeam = Number(e.max_members || e.maxMembers) > 1;
+  }
+
+  const minMembers = Number(e.min_members ?? e.minMembers ?? (rule ? rule.minMembers : 1));
+  const maxMembers = Number(e.max_members ?? e.maxMembers ?? (rule ? rule.maxMembers : (isTeam ? 3 : 1)));
+  const teamSize = e.team_size || e.teamSize || (rule ? rule.teamSize : (isTeam ? `Max of ${maxMembers} members` : 'Individual'));
+  const feePerHead = Number(e.fee_per_head ?? e.feePerHead ?? 0);
+  const feeType = e.fee_type || e.feeType || 'per_head';
+
+  return {
+    id: e.id,
+    number: e.number,
+    name: e.name,
+    alias: e.alias || e.name,
+    subtitle: e.subtitle,
+    category: e.category,
+    teamSize: teamSize,
+    team_size: teamSize,
+    minMembers: minMembers,
+    min_members: minMembers,
+    maxMembers: maxMembers,
+    max_members: maxMembers,
+    fee: e.fee,
+    feePerHead: feePerHead,
+    fee_per_head: feePerHead,
+    feeType: feeType,
+    fee_type: feeType,
+    isTeam: isTeam,
+    is_team: isTeam,
+    tag: e.tag,
+    venue: e.venue,
+    venueImage: e.venue_image || e.venueImage || '',
+    venue_image: e.venue_image || e.venueImage || '',
+    timing: e.timing,
+    description: e.description,
+    image: e.image || '',
+    rules: e.rules,
+    rounds: e.rounds,
+    guidelines: e.guidelines,
+    highlights: e.highlights,
+    createdAt: e.created_at || e.createdAt,
+    updatedAt: e.updated_at || e.updatedAt
+  };
+};
 
 const dbToHomepageTeam = (t) => {
   let members = [];
@@ -619,6 +664,10 @@ exports.getDashboardData = async (req, res) => {
                 copy.flag_reason = parsed.flag_reason;
                 copy.flagReason = parsed.flag_reason;
               }
+              if (parsed.payment_screenshot_path || parsed.paymentScreenshotPath) {
+                copy.payment_screenshot_path = copy.payment_screenshot_path || parsed.payment_screenshot_path || parsed.paymentScreenshotPath;
+                copy.paymentScreenshotPath = copy.payment_screenshot_path;
+              }
               if (Array.isArray(parsed.team_members) && parsed.team_members.length > 0) {
                 copy.team_members = parsed.team_members;
                 copy.teamMembers = parsed.team_members;
@@ -626,6 +675,8 @@ exports.getDashboardData = async (req, res) => {
               }
             } catch (_) {}
           }
+          copy.payment_screenshot_path = copy.payment_screenshot_path || copy.paymentScreenshotPath || null;
+          copy.paymentScreenshotPath = copy.payment_screenshot_path;
           if (Array.isArray(copy.registration_members) && copy.registration_members.length > 0 && (!copy.teamMembers || copy.teamMembers.length === 0)) {
             copy.teamMembers = copy.registration_members.map((m, idx) => ({
               memberNumber: m.member_number || idx + 2,
@@ -1510,6 +1561,13 @@ exports.createEvent = async (req, res) => {
   }
   saveEventsData(events);
 
+  try {
+    const apiController = require('./apiController');
+    if (apiController && typeof apiController.invalidateEventsCache === 'function') {
+      apiController.invalidateEventsCache();
+    }
+  } catch (_) {}
+
   res.json({
     success: true,
     message: 'Event created successfully in live database and storage',
@@ -1542,6 +1600,9 @@ exports.updateEvent = async (req, res) => {
     feePerHead,
     feeType,
     teamSize,
+    isTeam,
+    minMembers,
+    maxMembers,
     tag,
     description,
     image,
@@ -1578,6 +1639,15 @@ exports.updateEvent = async (req, res) => {
   if (teamSize !== undefined) {
     updateFields.team_size = teamSize.trim();
     updateFields.is_team = (teamSize.toLowerCase().includes('team') || teamSize.toLowerCase().includes('max') || teamSize.toLowerCase().includes('squad'));
+  }
+  if (isTeam !== undefined) {
+    updateFields.is_team = Boolean(isTeam);
+  }
+  if (minMembers !== undefined) {
+    updateFields.min_members = Number(minMembers);
+  }
+  if (maxMembers !== undefined) {
+    updateFields.max_members = Number(maxMembers);
   }
   if (tag !== undefined) updateFields.tag = tag.trim();
   if (description !== undefined) updateFields.description = description.trim();
@@ -1623,6 +1693,9 @@ exports.updateEvent = async (req, res) => {
       events[eventIndex].teamSize = teamSize.trim();
       events[eventIndex].isTeam = (teamSize.toLowerCase().includes('team') || teamSize.toLowerCase().includes('max') || teamSize.toLowerCase().includes('squad'));
     }
+    if (isTeam !== undefined) events[eventIndex].isTeam = Boolean(isTeam);
+    if (minMembers !== undefined) events[eventIndex].minMembers = Number(minMembers);
+    if (maxMembers !== undefined) events[eventIndex].maxMembers = Number(maxMembers);
     if (tag !== undefined) events[eventIndex].tag = tag.trim();
     if (description !== undefined) events[eventIndex].description = description.trim();
     if (cleanImage !== undefined) events[eventIndex].image = cleanImage ? cleanImage.trim() : '';
@@ -1660,6 +1733,13 @@ exports.updateEvent = async (req, res) => {
     events.push(constructed);
     saveEventsData(events);
   }
+
+  try {
+    const apiController = require('./apiController');
+    if (apiController && typeof apiController.invalidateEventsCache === 'function') {
+      apiController.invalidateEventsCache();
+    }
+  } catch (_) {}
 
   const updatedResult = eventIndex !== -1 ? events[eventIndex] : { id, ...req.body, image: cleanImage };
 
@@ -2385,6 +2465,7 @@ exports.verifyRegistration = async (req, res) => {
 
   try {
     const updatePayload = {
+      payment_status: isNowVerified ? 'VERIFIED' : (isNowFlagged ? 'REJECTED' : 'PENDING'),
       is_verified: isNowVerified,
       verified_at: verifiedAt,
       verified_by: verifiedBy,
@@ -2423,6 +2504,8 @@ exports.verifyRegistration = async (req, res) => {
         id: normId,
         ticket_code: normId,
         ticketCode: normId,
+        payment_status: isNowVerified ? 'VERIFIED' : (isNowFlagged ? 'REJECTED' : 'PENDING'),
+        paymentStatus: isNowVerified ? 'VERIFIED' : (isNowFlagged ? 'REJECTED' : 'PENDING'),
         is_verified: isNowVerified,
         isVerified: isNowVerified,
         is_flagged: isNowFlagged,
@@ -2464,6 +2547,197 @@ exports.verifyRegistration = async (req, res) => {
 };
 
 exports.updateRegistrationVerification = exports.verifyRegistration;
+
+// ==================== ADMIN PAYMENT SCREENSHOT & VERIFICATION ====================
+
+/**
+ * GET /api/admin/registrations/:id/payment-screenshot
+ * Admin only: fetches signed URL or streams compressed payment screenshot on-demand
+ */
+exports.getRegistrationScreenshot = async (req, res) => {
+  const { id } = req.params;
+  const pathParam = req.query.path;
+  const normId = String(id || '').trim();
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normId);
+
+  try {
+    let screenshotPath = null;
+
+    // Optimization: If client already has screenshot path, validate format and bypass DB query completely
+    if (pathParam && typeof pathParam === 'string' && pathParam.startsWith('symposium/') && !pathParam.includes('..')) {
+      screenshotPath = pathParam.trim();
+    } else {
+      const query = isUUID
+        ? supabase.from('registrations').select('id, ticket_code, payment_screenshot_path, venue_snapshot').eq('id', normId).limit(1).maybeSingle()
+        : supabase.from('registrations').select('id, ticket_code, payment_screenshot_path, venue_snapshot').ilike('ticket_code', normId).limit(1).maybeSingle();
+
+      const { data: reg, error: fetchErr } = await query;
+      if (fetchErr) {
+        console.warn('Fetch registration for screenshot view warning:', fetchErr.message);
+      }
+      if (reg) {
+        screenshotPath = reg.payment_screenshot_path;
+        if (!screenshotPath && reg.venue_snapshot) {
+          try {
+            const snap = typeof reg.venue_snapshot === 'string' ? JSON.parse(reg.venue_snapshot) : reg.venue_snapshot;
+            if (snap && snap.payment_screenshot_path) {
+              screenshotPath = snap.payment_screenshot_path;
+            }
+          } catch (e) {}
+        }
+      }
+    }
+
+    if (!screenshotPath) {
+      return res.status(404).json({
+        success: false,
+        message: 'No payment screenshot uploaded for this registration'
+      });
+    }
+
+    const { getScreenshotAccess } = require('../utils/screenshotStorage');
+    const access = await getScreenshotAccess(screenshotPath);
+
+    if (!access.success) {
+      return res.status(404).json({
+        success: false,
+        message: access.error || 'Payment screenshot file could not be accessed'
+      });
+    }
+
+    // Set client-side private caching to reduce server load
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+
+    if (access.type === 'signed_url') {
+      return res.json({
+        success: true,
+        type: 'signed_url',
+        url: access.signedUrl,
+        signedUrl: access.signedUrl,
+        path: access.path
+      });
+    }
+
+    if (access.type === 'buffer') {
+      const base64 = access.buffer.toString('base64');
+      const mime = access.contentType || 'image/webp';
+      const dataUrl = `data:${mime};base64,${base64}`;
+      return res.json({
+        success: true,
+        type: 'data_url',
+        url: dataUrl,
+        signedUrl: dataUrl,
+        path: screenshotPath
+      });
+    }
+
+    return res.status(500).json({ success: false, message: 'Failed to retrieve screenshot format' });
+  } catch (err) {
+    console.error('Error in getRegistrationScreenshot:', err);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve payment screenshot: ' + err.message });
+  }
+};
+
+/**
+ * PATCH /api/admin/registrations/:id/payment-status
+ * Admin only: verifies or rejects payment for a registration
+ */
+exports.updatePaymentStatus = async (req, res) => {
+  const { id } = req.params;
+  const { status, action, reason, flagReason } = req.body;
+  const operatorName = req.user?.username || req.user?.role || 'Admin';
+
+  const normId = String(id || '').trim();
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normId);
+
+  const cleanStatus = String(status || action || '').toUpperCase();
+  const isVerify = cleanStatus === 'VERIFIED' || cleanStatus === 'VERIFY';
+  const isReject = cleanStatus === 'REJECTED' || cleanStatus === 'REJECT' || cleanStatus === 'FLAGGED' || cleanStatus === 'FLAG';
+
+  const newPaymentStatus = isVerify ? 'VERIFIED' : (isReject ? 'REJECTED' : 'PENDING');
+  const newVerificationStatus = isVerify ? 'verified' : (isReject ? 'flagged' : 'pending');
+  const isNowVerified = isVerify;
+  const isNowFlagged = isReject;
+  const nowIso = new Date().toISOString();
+  const noteReason = flagReason || reason || (isReject ? 'Payment rejected by verification desk' : null);
+
+  const verifiedAt = isNowVerified ? nowIso : null;
+  const verifiedBy = isNowVerified ? operatorName : null;
+  const flaggedAt = isNowFlagged ? nowIso : null;
+  const flaggedBy = isNowFlagged ? operatorName : null;
+
+  try {
+    const updatePayload = {
+      payment_status: newPaymentStatus,
+      is_verified: isNowVerified,
+      verified_at: verifiedAt,
+      verified_by: verifiedBy,
+      attendance_status: isNowVerified ? 'verified' : 'pending',
+      verification_status: newVerificationStatus,
+      is_flagged: isNowFlagged,
+      flag_reason: isNowFlagged ? noteReason : null,
+      flagged_at: flaggedAt,
+      flagged_by: flaggedBy
+    };
+
+    const query = isUUID
+      ? supabase.from('registrations').update(updatePayload).eq('id', normId)
+      : supabase.from('registrations').update(updatePayload).ilike('ticket_code', normId);
+
+    const { data: dbData, error: supaErr } = await query.select('*, registration_members(*)');
+    let updatedRecord = (Array.isArray(dbData) && dbData.length > 0) ? dbData[0] : null;
+
+    if (supaErr) {
+      console.warn('Supabase updatePaymentStatus warning:', supaErr.message);
+      const fbPayload = {
+        is_verified: isNowVerified,
+        verified_at: verifiedAt,
+        verified_by: verifiedBy,
+        attendance_status: isNowVerified ? 'verified' : 'pending'
+      };
+      const fbQuery = isUUID
+        ? supabase.from('registrations').update(fbPayload).eq('id', normId)
+        : supabase.from('registrations').update(fbPayload).ilike('ticket_code', normId);
+      const { data: fbData } = await fbQuery.select('*, registration_members(*)');
+      if (Array.isArray(fbData) && fbData.length > 0) updatedRecord = fbData[0];
+    }
+
+    if (!updatedRecord) {
+      updatedRecord = {
+        id: normId,
+        ticket_code: normId,
+        ticketCode: normId,
+        payment_status: newPaymentStatus,
+        paymentStatus: newPaymentStatus,
+        is_verified: isNowVerified,
+        isVerified: isNowVerified,
+        verification_status: newVerificationStatus,
+        verificationStatus: newVerificationStatus,
+        is_flagged: isNowFlagged,
+        isFlagged: isNowFlagged,
+        verified_at: verifiedAt,
+        verified_by: verifiedBy,
+        flag_reason: isNowFlagged ? noteReason : null,
+        flagReason: isNowFlagged ? noteReason : null
+      };
+    }
+
+    // Broadcast WebSocket real-time update
+    try {
+      const { broadcastRegistrationUpdate } = require('../config/websocket');
+      broadcastRegistrationUpdate('UPDATE', updatedRecord);
+    } catch (wsErr) {}
+
+    return res.json({
+      success: true,
+      message: `Payment status updated to ${newPaymentStatus}`,
+      data: updatedRecord
+    });
+  } catch (err) {
+    console.error('Error in updatePaymentStatus:', err);
+    return res.status(500).json({ success: false, message: 'Failed to update payment status: ' + err.message });
+  }
+};
 
 // ==================== HOMEPAGE STUDENT COORDINATOR TEAMS ============================
 exports.getHomepageCoordinators = async (req, res) => {

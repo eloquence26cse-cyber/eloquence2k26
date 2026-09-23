@@ -410,7 +410,7 @@ export default function ParticipantVerifier({
         } catch (e) {}
 
         toast.error(
-          `⛔ ENTRY BLOCKED! ${getParticipantName(matched)} is FLAGGED in Registration Verification.\nReason: "${flagReason}"`,
+          `ENTRY BLOCKED: ${getParticipantName(matched)} is FLAGGED in Registration Verification.\nReason: "${flagReason}"`,
           { id: 'scan-verify-toast', duration: 8500 }
         );
       } else if (!isRegVerified) {
@@ -441,7 +441,7 @@ export default function ParticipantVerifier({
         } catch (e) {}
 
         toast.error(
-          `⚠️ ADMISSION DENIED: ${getParticipantName(matched)} (#${getTicketCode(matched)}) is NOT verified in Registration Verification. Only desk-verified participants will be showed.`,
+          `ADMISSION DENIED: ${getParticipantName(matched)} (#${getTicketCode(matched)}) is NOT verified in Registration Verification. Only desk-verified participants will be showed.`,
           { id: 'scan-verify-toast', duration: 7500 }
         );
       } else {
@@ -471,7 +471,7 @@ export default function ParticipantVerifier({
 
         if (isAlreadyAdmitted) {
           toast.success(
-            `✓ ${getParticipantName(matched)} is ALREADY ADMITTED & PRESENT!`,
+            `${getParticipantName(matched)} is ALREADY ADMITTED & PRESENT!`,
             { id: 'scan-verify-toast', duration: 4500 }
           );
         } else if (autoVerifyOnScan) {
@@ -479,7 +479,7 @@ export default function ParticipantVerifier({
           await handleToggleVerification(matched, true);
         } else {
           toast.success(
-            `✓ Registration Desk Verified: ${getParticipantName(matched)} is eligible for admission`,
+            `Registration Desk Verified: ${getParticipantName(matched)} is eligible for admission`,
             { id: 'scan-verify-toast', duration: 4000 }
           );
         }
@@ -1267,11 +1267,11 @@ export default function ParticipantVerifier({
             onChange={(e) => setStatusFilter(e.target.value)}
             style={S.filterSelect}
           >
-            <option value="verified">✓ Registration Verified Only ({regVerifiedCount})</option>
+            <option value="verified">Registration Verified Only ({regVerifiedCount})</option>
             <option value="all">All Registrations ({totalCount})</option>
-            <option value="flagged">⛔ Flagged Registrations ({flaggedCount})</option>
-            <option value="unverified">⏳ Pending Desk Verification ({unverifiedCount})</option>
-            <option value="admitted">🎟️ Admitted / Present Only ({admittedCount})</option>
+            <option value="flagged">[Blocked] Flagged Registrations ({flaggedCount})</option>
+            <option value="unverified">Pending Desk Verification ({unverifiedCount})</option>
+            <option value="admitted">Admitted / Present Only ({admittedCount})</option>
           </select>
 
           <select 
@@ -1481,8 +1481,9 @@ export default function ParticipantVerifier({
               <p style={{ margin: '4px 0 0 0', fontSize: '0.92rem', color: isDark ? '#fde68a' : '#78350f', fontWeight: '700' }}>
                 Participant: {getParticipantName(scanAlert.participant)} ({getEventName(scanAlert.participant)})
               </p>
-              <div style={{ fontSize: '0.82rem', color: isDark ? '#cbd5e1' : '#64748b', marginTop: '4px' }}>
-                ⚠️ This participant has NOT been verified at the Registration Desk (Payment / UTR unconfirmed). In accordance with event policy, only participants verified in Registration Verification will be showed and admitted.
+              <div style={{ fontSize: '0.82rem', color: isDark ? '#cbd5e1' : '#64748b', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <FaExclamationTriangle style={{ color: '#eab308', flexShrink: 0 }} />
+                <span>This participant has NOT been verified at the Registration Desk (Payment / UTR unconfirmed). In accordance with event policy, only participants verified in Registration Verification will be showed and admitted.</span>
               </div>
             </div>
           </div>

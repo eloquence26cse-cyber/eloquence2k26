@@ -3,10 +3,33 @@ const router = express.Router();
 const apiController = require('../controllers/apiController');
 const adminController = require('../controllers/adminController');
 
+const multer = require('multer');
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
+
+const handleMultipartOrJson = (req, res, next) => {
+  if (req.is('multipart/form-data')) {
+    upload.fields([{ name: 'screenshot', maxCount: 1 }, { name: 'paymentScreenshot', maxCount: 1 }])(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ success: false, message: err.message || 'File upload error' });
+      }
+      if (req.files) {
+        req.file = (req.files.screenshot && req.files.screenshot[0]) || (req.files.paymentScreenshot && req.files.paymentScreenshot[0]);
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+};
+
 // ── Public Routes ─────────────────────────────────────────────────────────────
 router.get('/health', apiController.getHealth);
 router.get('/status', apiController.getStatus);
-router.post('/register', apiController.registerEvent);
+router.post('/register', handleMultipartOrJson, apiController.registerEvent);
+router.post('/registrations/:id/payment-screenshot', handleMultipartOrJson, apiController.uploadPaymentScreenshot);
 router.post('/payment/create-order', apiController.createPaymentOrder);
 router.post('/payment/verify-and-register', apiController.verifyPaymentAndRegister);
 router.get('/registrations', apiController.getRegistrations);
@@ -73,6 +96,8 @@ router.delete('/admin/coordinators/:id', adminController.verifyToken, adminContr
 
 // ── Admin Registration Management ──────────────────────────────────────────
 router.delete('/admin/registrations/:id', adminController.verifyToken, adminController.requireWriteAccess, adminController.deleteRegistration);
+router.get('/admin/registrations/:id/payment-screenshot', adminController.verifyToken, adminController.getRegistrationScreenshot);
+router.patch('/admin/registrations/:id/payment-status', adminController.verifyToken, adminController.updatePaymentStatus);
 router.patch('/admin/registrations/:id/verify', adminController.verifyToken, adminController.verifyRegistration);
 router.post('/admin/registrations/:id/verify', adminController.verifyToken, adminController.verifyRegistration);
 router.patch('/admin/registrations/:id/verification', adminController.verifyToken, adminController.verifyRegistration);

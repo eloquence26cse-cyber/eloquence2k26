@@ -88,6 +88,8 @@ export async function submitRegistration(payload) {
 
 import defaultEvents from '../data/events.js';
 import defaultSponsorsObj from '../data/sponsors.js';
+import coordinatorsData from '../data/coordinator.js';
+import { normalizeEvent } from '../utils/eventUtils.js';
 
 const flatDefaultSponsors = Array.isArray(defaultSponsorsObj)
   ? defaultSponsorsObj
@@ -192,12 +194,11 @@ export async function fetchCoordinatorsByEvent(eventId) {
   try {
     const res = await fetch(getApiUrl(`/api/coordinators/event/${encodeURIComponent(eventId)}`));
     const data = await res.json();
-    if (data.success) return data.data;
-    return [];
+    if (data.success && Array.isArray(data.data) && data.data.length > 0) return data.data;
   } catch (err) {
     console.warn(`Failed to fetch coordinators for event ${eventId}:`, err);
-    return null;
   }
+  return coordinatorsData[eventId]?.coordinators || [];
 }
 
 // ==================== ADMIN APIS (AUTH REQUIRED) ====================
@@ -444,17 +445,17 @@ export async function updateRegistrationStatus(token, payload) {
 
 // ==================== EVENTS CACHING & FETCHING ====================
 function getStoredEventsCache() {
-  if (typeof window === 'undefined') return defaultEvents;
+  if (typeof window === 'undefined') return defaultEvents.map(normalizeEvent);
   try {
     const raw = localStorage.getItem('eloquence_db_events_v3') || sessionStorage.getItem('eloquence_db_events_v3');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return parsed.map(normalizeEvent);
       }
     }
   } catch (_) {}
-  return defaultEvents;
+  return defaultEvents.map(normalizeEvent);
 }
 
 let inMemoryEventsCache = getStoredEventsCache();
@@ -464,7 +465,7 @@ const CLIENT_EVENTS_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes client freshness
 
 export function getCachedEvents() {
   if (inMemoryEventsCache && Array.isArray(inMemoryEventsCache) && inMemoryEventsCache.length > 0) {
-    return inMemoryEventsCache;
+    return inMemoryEventsCache.map(normalizeEvent);
   }
   inMemoryEventsCache = getStoredEventsCache();
   return inMemoryEventsCache;
@@ -472,11 +473,12 @@ export function getCachedEvents() {
 
 export function setCachedEvents(events) {
   if (Array.isArray(events) && events.length > 0) {
-    inMemoryEventsCache = events;
+    const normalized = events.map(normalizeEvent);
+    inMemoryEventsCache = normalized;
     lastEventsFetchTime = Date.now();
     try {
-      localStorage.setItem('eloquence_db_events_v3', JSON.stringify(events));
-      sessionStorage.setItem('eloquence_db_events_v3', JSON.stringify(events));
+      localStorage.setItem('eloquence_db_events_v3', JSON.stringify(normalized));
+      sessionStorage.setItem('eloquence_db_events_v3', JSON.stringify(normalized));
       localStorage.removeItem('eloquence_db_events');
       sessionStorage.removeItem('eloquence_db_events');
     } catch (_) {}
@@ -504,6 +506,14 @@ export async function fetchEventsData(force = false) {
             return a.category === 'technical' ? -1 : 1;
           }
           return (a.id || '').localeCompare(b.id || '', undefined, { numeric: true });
+        }).map(e => {
+          const fallbackCoords = coordinatorsData[e.id]?.coordinators || [];
+          return normalizeEvent({
+            ...e,
+            coordinators: (Array.isArray(e.coordinators) && e.coordinators.length > 0)
+              ? e.coordinators
+              : fallbackCoords
+          });
         });
         setCachedEvents(sorted);
         return sorted;
@@ -570,6 +580,59 @@ export async function updateEventAllocation(allocationData, token) {
   });
   return res.json();
 }
+
+/**
+ * Uploads a payment screenshot for a given registration ID / ticket code
+ */
+export async function uploadPaymentScreenshot(registrationId, file) {
+  const formData = new FormData();
+  formData.append('screenshot', file);
+  const res = await fetch(getApiUrl(`/api/registrations/${encodeURIComponent(registrationId)}/payment-screenshot`), {
+    method: 'POST',
+    body: formData
+  });
+  return res.json();
+}
+
+/**
+ * Fetches the temporary signed URL for a registration's payment screenshot (Admin only)
+ * If screenshotPath is provided, backend generates signed URL directly without querying database
+ */
+export async function getPaymentScreenshot(registrationId, token, screenshotPath = null) {
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const query = screenshotPath ? `?path=${encodeURIComponent(screenshotPath)}` : '';
+  const res = await fetch(getApiUrl(`/api/admin/registrations/${encodeURIComponent(registrationId)}/payment-screenshot${query}`), {
+    headers
+  });
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('image/')) {
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    return { success: true, url: blobUrl, signedUrl: blobUrl };
+  }
+  return res.json();
+}
+
+/**
+ * Updates payment status (VERIFIED | REJECTED | PENDING) for a registration (Admin only)
+ */
+export async function updateRegistrationPaymentStatus(registrationId, status, token, options = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(getApiUrl(`/api/admin/registrations/${encodeURIComponent(registrationId)}/payment-status`), {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({
+      status,
+      action: status?.toLowerCase(),
+      reason: options.reason || null,
+      flagReason: options.flagReason || options.reason || null
+    })
+  });
+  return res.json();
+}
+
 
 
 

@@ -228,33 +228,78 @@ const dbToHomepageTeam = (t) => {
   };
 };
 
-const dbToEvent = (e) => ({
-  id: e.id,
-  number: e.number,
-  name: e.name,
-  alias: e.alias,
-  subtitle: e.subtitle,
-  category: e.category,
-  teamSize: e.team_size || e.teamSize,
-  minMembers: e.min_members || e.minMembers || 1,
-  maxMembers: e.max_members || e.maxMembers || 1,
-  fee: e.fee,
-  feePerHead: e.fee_per_head || e.feePerHead || 0,
-  feeType: e.fee_type || e.feeType || 'per_head',
-  isTeam: e.is_team !== false && e.isTeam !== false,
-  tag: e.tag,
-  venue: e.venue,
-  venueImage: e.venue_image || e.venueImage || '',
-  timing: e.timing,
-  description: e.description,
-  image: e.image || '',
-  rules: e.rules,
-  rounds: e.rounds,
-  guidelines: e.guidelines,
-  highlights: e.highlights,
-  createdAt: e.created_at || e.createdAt,
-  updatedAt: e.updated_at || e.updatedAt
-});
+const EVENT_TEAM_RULES = {
+  'tech-01': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members' },
+  'tech-02': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
+  'tech-03': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
+  'tech-04': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
+  'tech-05': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
+  'tech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
+  'nontech-01': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
+  'nontech-02': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members' },
+  'nontech-03': { isTeam: true, minMembers: 2, maxMembers: 4, teamSize: 'Max of 4 members' },
+  'nontech-04': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
+  'nontech-05': { isTeam: true, minMembers: 4, maxMembers: 4, teamSize: 'Only Squad Match (4 Players)' },
+  'nontech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual only' },
+  'nontech-07': { isTeam: true, minMembers: 5, maxMembers: 5, teamSize: 'Team of 5 Members' }
+};
+
+const dbToEvent = (e) => {
+  const normId = String(e.id || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
+  const rule = EVENT_TEAM_RULES[normId] || EVENT_TEAM_RULES[e.id] || null;
+
+  let isTeam = false;
+  if (rule) {
+    isTeam = rule.isTeam;
+  } else if (e.is_team !== undefined) {
+    isTeam = Boolean(e.is_team);
+  } else if (e.isTeam !== undefined) {
+    isTeam = Boolean(e.isTeam);
+  } else if (e.max_members !== undefined || e.maxMembers !== undefined) {
+    isTeam = Number(e.max_members || e.maxMembers) > 1;
+  }
+
+  const minMembers = Number(e.min_members ?? e.minMembers ?? (rule ? rule.minMembers : 1));
+  const maxMembers = Number(e.max_members ?? e.maxMembers ?? (rule ? rule.maxMembers : (isTeam ? 3 : 1)));
+  const teamSize = e.team_size || e.teamSize || (rule ? rule.teamSize : (isTeam ? `Max of ${maxMembers} members` : 'Individual'));
+  const feePerHead = Number(e.fee_per_head ?? e.feePerHead ?? 0);
+  const feeType = e.fee_type || e.feeType || 'per_head';
+
+  return {
+    id: e.id,
+    number: e.number,
+    name: e.name,
+    alias: e.alias || e.name,
+    subtitle: e.subtitle,
+    category: e.category,
+    teamSize: teamSize,
+    team_size: teamSize,
+    minMembers: minMembers,
+    min_members: minMembers,
+    maxMembers: maxMembers,
+    max_members: maxMembers,
+    fee: e.fee,
+    feePerHead: feePerHead,
+    fee_per_head: feePerHead,
+    feeType: feeType,
+    fee_type: feeType,
+    isTeam: isTeam,
+    is_team: isTeam,
+    tag: e.tag,
+    venue: e.venue,
+    venueImage: e.venue_image || e.venueImage || '',
+    venue_image: e.venue_image || e.venueImage || '',
+    timing: e.timing,
+    description: e.description,
+    image: e.image || '',
+    rules: e.rules,
+    rounds: e.rounds,
+    guidelines: e.guidelines,
+    highlights: e.highlights,
+    createdAt: e.created_at || e.createdAt,
+    updatedAt: e.updated_at || e.updatedAt
+  };
+};
 
 // ── Ultra-Fast Server In-Memory Cache with Background Sync ────────────────
 let inMemoryEvents = null;
@@ -293,7 +338,7 @@ function initServerMemoryCache() {
 
   try {
     const sponsors = readSponsors();
-    const active = sponsors.filter(s => s.isActive !== false);
+    const active = sponsors.map(dbToSponsor).filter(s => s.isActive !== false);
     active.sort((a, b) => (Number(a.displayOrder) || 999) - (Number(b.displayOrder) || 999));
     if (active.length > 0) {
       inMemorySponsors = active;
@@ -303,7 +348,7 @@ function initServerMemoryCache() {
 
   try {
     const coords = readCoordinators();
-    const active = coords.filter(c => c.isActive !== false);
+    const active = coords.map(dbToCoordinator).filter(c => c.isActive !== false);
     active.sort((a, b) => (Number(a.displayOrder) || 999) - (Number(b.displayOrder) || 999));
     if (active.length > 0) {
       inMemoryCoordinators = active;
@@ -313,7 +358,7 @@ function initServerMemoryCache() {
 
   try {
     const hp = readHomepageCoordinators();
-    const active = hp.filter(t => t.isActive !== false);
+    const active = hp.map(dbToHomepageTeam).filter(t => t.isActive !== false);
     active.sort((a, b) => (Number(a.displayOrder) || 999) - (Number(b.displayOrder) || 999));
     if (active.length > 0) {
       inMemoryHomepageTeams = active;
@@ -716,7 +761,17 @@ exports.registerEvent = async (req, res) => {
     });
   }
 
-  const { currentEvent, fields, totalFee, paymentMethod = 'ON_SITE_DESK', paymentStatus = 'paid', game } = req.body;
+  let currentEvent = req.body.currentEvent;
+  if (typeof currentEvent === 'string') {
+    try { currentEvent = JSON.parse(currentEvent); } catch (e) {}
+  }
+  let fields = req.body.fields;
+  if (typeof fields === 'string') {
+    try { fields = JSON.parse(fields); } catch (e) {}
+  }
+  const totalFee = req.body.totalFee;
+  const paymentMethod = req.body.paymentMethod || 'ON_SITE_DESK';
+  const game = req.body.game;
   
   if (!currentEvent || !fields) {
     return res.status(400).json({ success: false, message: 'Missing required data' });
@@ -785,15 +840,38 @@ exports.registerEvent = async (req, res) => {
     });
 
   const isPaid = Number(totalFee) > 0;
+  // Security enforcement: clients cannot self-verify paid events
   const initialVerificationStatus = isPaid ? 'pending' : 'verified';
+  const initialPaymentStatus = isPaid ? 'PENDING' : 'FREE';
+
+  // Handle payment screenshot if file was uploaded or path passed
+  let screenshotPath = (fields && (fields.paymentScreenshotPath || fields.payment_screenshot_path)) || req.body.paymentScreenshotPath || req.body.payment_screenshot_path || null;
+  if (req.file) {
+    try {
+      const { validateScreenshot, uploadScreenshot } = require('../utils/screenshotStorage');
+      const val = validateScreenshot(req.file);
+      if (val.valid) {
+        const uploadRes = await uploadScreenshot(ticketCode, req.file.buffer);
+        if (uploadRes && uploadRes.path) {
+          screenshotPath = uploadRes.path;
+        }
+      } else {
+        console.warn('[Register Screenshot Validation Notice]', val.error);
+      }
+    } catch (uploadErr) {
+      console.warn('[Screenshot Upload in Register]', uploadErr.message);
+    }
+  }
 
   const paymentMeta = {
     venue: currentEvent.venue || 'CSE Department Labs',
-    payment_method: paymentMethod || 'ON_SITE_DESK',
+    payment_method: paymentMethod || (isPaid ? 'UPI_QR' : 'ON_SITE_DESK'),
     game: game || null,
     upi_utr: cleanUtr || null,
     transaction_id: cleanUtr || null,
+    payment_screenshot_path: screenshotPath,
     verification_status: initialVerificationStatus,
+    payment_status: initialPaymentStatus,
     team_members: validTeamMembers
   };
   const venueSnapshotStr = JSON.stringify(paymentMeta);
@@ -820,11 +898,15 @@ exports.registerEvent = async (req, res) => {
     teamMembers: validTeamMembers,
     totalFee: Number(totalFee) || 0,
     totalAmount: Number(totalFee) || 0,
-    paymentStatus: paymentStatus || 'paid',
-    paymentMethod: paymentMethod || 'ON_SITE_DESK',
+    paymentStatus: initialPaymentStatus,
+    payment_status: initialPaymentStatus,
+    paymentMethod: paymentMethod || (isPaid ? 'UPI_QR' : 'ON_SITE_DESK'),
     upiUtr: cleanUtr || null,
     transactionId: cleanUtr || null,
+    paymentScreenshotPath: screenshotPath,
+    payment_screenshot_path: screenshotPath,
     verificationStatus: initialVerificationStatus,
+    verification_status: initialVerificationStatus,
     isVerified: !isPaid,
     isFlagged: false,
     registrationStatus: 'active',
@@ -853,33 +935,44 @@ exports.registerEvent = async (req, res) => {
     }
 
     // Insert into registrations table
-    const { data: regData, error: regError } = await supabase
+    let regInsertPayload = {
+      event_id: currentEvent.id,
+      ticket_code: ticketCode,
+      team_name: fields.teamName || null,
+      full_name: fields.fullName,
+      email: fields.email,
+      phone: fields.phone,
+      college: fields.college,
+      department: fields.department,
+      year: fields.year,
+      members_count: 1 + validTeamMembers.length,
+      total_fee: totalFee,
+      payment_status: initialPaymentStatus,
+      registration_status: 'confirmed',
+      payment_method: paymentMethod || (isPaid ? 'UPI_QR' : 'ON_SITE_DESK'),
+      razorpay_payment_id: cleanUtr || null,
+      venue_snapshot: venueSnapshotStr,
+      timing_snapshot: currentEvent.timing || '10:00 AM – 1:00 PM',
+      is_verified: !isPaid,
+      payment_screenshot_path: screenshotPath
+    };
+
+    let { data: regData, error: regError } = await supabase
       .from('registrations')
-      .insert([{
-        event_id: currentEvent.id,
-        ticket_code: ticketCode,
-        team_name: fields.teamName || null,
-        full_name: fields.fullName,
-        email: fields.email,
-        phone: fields.phone,
-        college: fields.college,
-        department: fields.department,
-        year: fields.year,
-        members_count: 1 + validTeamMembers.length,
-        total_fee: totalFee,
-        payment_status: paymentStatus,
-        registration_status: 'confirmed',
-        payment_method: paymentMethod || 'ON_SITE_DESK',
-        razorpay_payment_id: cleanUtr || null,
-        venue_snapshot: venueSnapshotStr,
-        timing_snapshot: currentEvent.timing || '10:00 AM – 1:00 PM',
-        is_verified: !isPaid
-      }])
+      .insert([regInsertPayload])
       .select('id');
 
     if (regError) {
       console.warn('[Supabase Registration Warning]:', regError.message);
-    } else if (regData && regData[0] && validTeamMembers.length > 0) {
+      // If payment_screenshot_path column is not yet migrated in Supabase, fallback without it
+      if (regError.message && regError.message.includes('payment_screenshot_path')) {
+        delete regInsertPayload.payment_screenshot_path;
+        const fbRes = await supabase.from('registrations').insert([regInsertPayload]).select('id');
+        regData = fbRes.data;
+      }
+    }
+
+    if (regData && regData[0] && validTeamMembers.length > 0) {
       const dbRegId = regData[0].id;
       const membersToInsert = validTeamMembers.map((member, idx) => ({
         registration_id: dbRegId,
@@ -909,6 +1002,97 @@ exports.registerEvent = async (req, res) => {
   });
 };
 
+exports.uploadPaymentScreenshot = async (req, res) => {
+  const { id } = req.params;
+  const file = req.file;
+
+  if (!file) {
+    return res.status(400).json({ success: false, message: 'Please select a screenshot file to upload' });
+  }
+
+  const { validateScreenshot, uploadScreenshot } = require('../utils/screenshotStorage');
+  const validation = validateScreenshot(file);
+  if (!validation.valid) {
+    return res.status(400).json({ success: false, message: validation.error });
+  }
+
+  const normId = String(id || '').trim();
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normId);
+
+  try {
+    const query = isUUID
+      ? supabase.from('registrations').select('*').eq('id', normId).maybeSingle()
+      : supabase.from('registrations').select('*').ilike('ticket_code', normId).maybeSingle();
+
+    const { data: reg, error: fetchErr } = await query;
+    if (fetchErr) {
+      console.warn('Fetch registration for screenshot upload warning:', fetchErr.message);
+    }
+    if (!reg) {
+      return res.status(404).json({ success: false, message: 'Registration not found' });
+    }
+
+    const regId = reg.id || normId;
+    const ticketCode = reg.ticket_code || normId;
+    const existingScreenshotPath = reg.payment_screenshot_path;
+
+    // Upload with Sharp compression and duplicate cleanup
+    const uploadRes = await uploadScreenshot(ticketCode, file.buffer, existingScreenshotPath);
+    const screenshotPath = uploadRes.path;
+
+    // Update database record and venue_snapshot
+    let venueSnapshotObj = {};
+    if (reg.venue_snapshot) {
+      try {
+        venueSnapshotObj = typeof reg.venue_snapshot === 'string' ? JSON.parse(reg.venue_snapshot) : reg.venue_snapshot;
+      } catch (e) {}
+    }
+    venueSnapshotObj.payment_screenshot_path = screenshotPath;
+    const updatedVenueSnapshot = JSON.stringify(venueSnapshotObj);
+
+    const updatePayload = {
+      payment_screenshot_path: screenshotPath,
+      venue_snapshot: updatedVenueSnapshot
+    };
+
+    let { data: updatedData, error: updateErr } = await (isUUID
+      ? supabase.from('registrations').update(updatePayload).eq('id', normId)
+      : supabase.from('registrations').update(updatePayload).ilike('ticket_code', normId)
+    ).select('*, registration_members(*)');
+
+    if (updateErr && updateErr.message && updateErr.message.includes('payment_screenshot_path')) {
+      const fbUpdate = await (isUUID
+        ? supabase.from('registrations').update({ venue_snapshot: updatedVenueSnapshot }).eq('id', normId)
+        : supabase.from('registrations').update({ venue_snapshot: updatedVenueSnapshot }).ilike('ticket_code', normId)
+      ).select('*, registration_members(*)');
+      updatedData = fbUpdate.data;
+    }
+
+    const updatedRecord = (Array.isArray(updatedData) && updatedData.length > 0) ? updatedData[0] : {
+      ...reg,
+      payment_screenshot_path: screenshotPath,
+      paymentScreenshotPath: screenshotPath
+    };
+
+    // Broadcast WebSocket update
+    try {
+      const { broadcastRegistrationUpdate } = require('../config/websocket');
+      broadcastRegistrationUpdate('UPDATE', updatedRecord);
+    } catch (wsErr) {}
+
+    return res.json({
+      success: true,
+      message: 'Payment screenshot uploaded and compressed successfully',
+      path: screenshotPath,
+      size: uploadRes.size,
+      ticketCode
+    });
+  } catch (err) {
+    console.error('Error in uploadPaymentScreenshot:', err);
+    return res.status(500).json({ success: false, message: 'Failed to upload payment screenshot: ' + (err.message || err.toString()) });
+  }
+};
+
 exports.getHealth = (req, res) => {
   res.json({
     status: 'OK',
@@ -919,12 +1103,41 @@ exports.getHealth = (req, res) => {
 
 const EVENT_SELECT_COLUMNS = 'id, number, name, alias, subtitle, category, team_size, min_members, max_members, fee, fee_per_head, fee_type, is_team, tag, venue, venue_image, timing, description, image, rules, rounds, guidelines, highlights, created_at, updated_at';
 
+const getEventCoordinatorsList = (eventId) => {
+  if (!eventId) return [];
+  const evLower = String(eventId).toLowerCase().trim();
+  const rawCoords = (inMemoryCoordinators && inMemoryCoordinators.length > 0)
+    ? inMemoryCoordinators
+    : readCoordinators();
+
+  return rawCoords
+    .map(c => (c && Array.isArray(c.assignedEvents) ? c : dbToCoordinator(c)))
+    .filter(c => {
+      if (c.isActive === false && c.is_active === false) return false;
+      const assigned = Array.isArray(c.assignedEvents)
+        ? c.assignedEvents
+        : (Array.isArray(c.assigned_events) ? c.assigned_events : []);
+      return assigned.some(e => String(e).toLowerCase().trim() === evLower);
+    })
+    .sort((a, b) => (Number(a.displayOrder) || 999) - (Number(b.displayOrder) || 999));
+};
+
+const attachCoordinatorsToEvents = (events) => {
+  if (!Array.isArray(events)) return events;
+  return events.map(ev => ({
+    ...ev,
+    coordinators: (Array.isArray(ev.coordinators) && ev.coordinators.length > 0)
+      ? ev.coordinators
+      : getEventCoordinatorsList(ev.id)
+  }));
+};
+
 exports.getPublicEvents = async (req, res) => {
   const now = Date.now();
 
   // 1. If in-memory cache is available and fresh, serve instantly (< 1ms, 0 DB egress)
   if (inMemoryEvents && inMemoryEvents.length > 0 && (now - lastEventsSyncTime < CACHE_TTL_MS)) {
-    return res.json({ success: true, data: inMemoryEvents });
+    return res.json({ success: true, data: attachCoordinatorsToEvents(inMemoryEvents) });
   }
 
   // 2. Load from local file if memory cache is not yet set
@@ -940,8 +1153,8 @@ exports.getPublicEvents = async (req, res) => {
 
   // 3. Serve local/cached data immediately to ensure zero UI latency
   if (localEvents.length > 0) {
-    inMemoryEvents = localEvents;
-    res.json({ success: true, data: localEvents });
+    inMemoryEvents = attachCoordinatorsToEvents(localEvents.map(dbToEvent));
+    res.json({ success: true, data: inMemoryEvents });
 
     // Deduplicated background sync with Supabase only if cache expired
     if (!inFlightEventsPromise && (now - lastEventsSyncTime >= CACHE_TTL_MS)) {
@@ -960,7 +1173,7 @@ exports.getPublicEvents = async (req, res) => {
                 venueImage: e.venueImage || (local ? (local.venueImage || local.venue_image) : '') || ''
               };
             });
-            inMemoryEvents = merged;
+            inMemoryEvents = attachCoordinatorsToEvents(merged);
             lastEventsSyncTime = Date.now();
           }
         } catch (err) {
@@ -982,16 +1195,16 @@ exports.getPublicEvents = async (req, res) => {
 
     if (!error && Array.isArray(dbEvents) && dbEvents.length > 0) {
       const merged = dbEvents.map(dbToEvent);
-      inMemoryEvents = merged;
+      inMemoryEvents = attachCoordinatorsToEvents(merged);
       lastEventsSyncTime = Date.now();
-      return res.json({ success: true, data: merged });
+      return res.json({ success: true, data: inMemoryEvents });
     }
   } catch (e) {
     console.warn('Supabase getPublicEvents fallback:', e.message);
   }
 
-  inMemoryEvents = localEvents;
-  res.json({ success: true, data: localEvents });
+  inMemoryEvents = attachCoordinatorsToEvents(localEvents);
+  res.json({ success: true, data: inMemoryEvents });
 };
 
 // Helper to enrich a database registration with parsed venue_snapshot metadata (Razorpay info)
@@ -1098,6 +1311,9 @@ const enrichRegistrationRecord = (r) => {
         copy.flag_reason = parsed.flag_reason || parsed.flagReason;
         copy.flagReason = copy.flag_reason;
       }
+      if (parsed.payment_screenshot_path || parsed.paymentScreenshotPath) {
+        copy.payment_screenshot_path = copy.payment_screenshot_path || parsed.payment_screenshot_path || parsed.paymentScreenshotPath;
+      }
       if (parsed.venue) {
         copy.venue = parsed.venue;
       }
@@ -1109,6 +1325,10 @@ const enrichRegistrationRecord = (r) => {
       // Not JSON or parse error, keep venue_snapshot as venue string
     }
   }
+
+  // Normalize payment screenshot path
+  copy.payment_screenshot_path = copy.payment_screenshot_path || copy.paymentScreenshotPath || null;
+  copy.paymentScreenshotPath = copy.payment_screenshot_path;
 
   // Map joined registration_members table if present
   if (Array.isArray(copy.registration_members) && copy.registration_members.length > 0) {
@@ -1154,12 +1374,18 @@ const enrichRegistrationRecord = (r) => {
     copy.isVerified = false;
     copy.verificationStatus = 'flagged';
     copy.verification_status = 'flagged';
+    copy.payment_status = 'REJECTED';
+    copy.paymentStatus = 'REJECTED';
   } else if (copy.is_verified) {
     copy.verificationStatus = 'verified';
     copy.verification_status = 'verified';
+    copy.payment_status = 'VERIFIED';
+    copy.paymentStatus = 'VERIFIED';
   } else {
     copy.verificationStatus = copy.verification_status || copy.verificationStatus || 'pending';
     copy.verification_status = copy.verificationStatus;
+    copy.payment_status = (copy.payment_status || copy.paymentStatus || 'PENDING').toUpperCase();
+    copy.paymentStatus = copy.payment_status;
   }
 
   return copy;
@@ -1346,12 +1572,14 @@ exports.getActiveCoordinators = async (req, res) => {
     return res.json({ success: true, count: inMemoryCoordinators.length, data: inMemoryCoordinators });
   }
 
-  const localCoords = inMemoryCoordinators || (() => {
-    const coordinators = readCoordinators();
-    const active = coordinators.filter(c => c.isActive !== false);
-    active.sort((a, b) => (Number(a.displayOrder) || 999) - (Number(b.displayOrder) || 999));
-    return active;
-  })();
+  const localCoords = (inMemoryCoordinators && inMemoryCoordinators.length > 0)
+    ? inMemoryCoordinators
+    : (() => {
+        const coordinators = readCoordinators();
+        const active = coordinators.map(dbToCoordinator).filter(c => c.isActive !== false);
+        active.sort((a, b) => (Number(a.displayOrder) || 999) - (Number(b.displayOrder) || 999));
+        return active;
+      })();
 
   if (localCoords.length > 0) {
     inMemoryCoordinators = localCoords;
@@ -1408,15 +1636,7 @@ exports.getCoordinatorsByEvent = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Event ID is required' });
     }
 
-    let allCoords = inMemoryCoordinators && inMemoryCoordinators.length > 0
-      ? inMemoryCoordinators
-      : readCoordinators().map(dbToCoordinator).filter(c => c.isActive !== false);
-
-    let matching = allCoords.filter(c => 
-      c.isActive !== false && 
-      Array.isArray(c.assignedEvents) && 
-      c.assignedEvents.map(e => String(e).toLowerCase()).includes(eventId.toLowerCase())
-    );
+    let matching = getEventCoordinatorsList(eventId);
 
     if (role) {
       const rLower = role.toLowerCase().trim();

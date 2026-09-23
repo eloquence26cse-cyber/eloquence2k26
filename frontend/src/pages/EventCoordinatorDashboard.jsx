@@ -44,7 +44,10 @@ import {
   FaEye,
   FaImage,
   FaGlobe,
-  FaBuilding
+  FaBuilding,
+  FaFire,
+  FaCrosshairs,
+  FaGamepad
 } from 'react-icons/fa';
 import defaultEvents from '../data/events.js';
 import rulesData from '../data/rules.js';
@@ -2384,9 +2387,15 @@ export default function EventCoordinatorDashboard({ token, user, onLogout }) {
                                   : 'rgba(124, 58, 237, 0.4)'
                               }`
                             }}>
-                              {(coord.game || '').toLowerCase().includes('fire') && '🔥 Free Fire'}
-                              {(coord.game || '').toLowerCase().includes('bgmi') && '🎯 BGMI'}
-                              {!(coord.game || '').toLowerCase().includes('fire') && !(coord.game || '').toLowerCase().includes('bgmi') && '🎮 ' + coord.game}
+                              {(coord.game || '').toLowerCase().includes('fire') && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><FaFire style={{ color: '#ea580c' }} /> Free Fire</span>
+                              )}
+                              {(coord.game || '').toLowerCase().includes('bgmi') && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><FaCrosshairs style={{ color: '#0891b2' }} /> BGMI</span>
+                              )}
+                              {!(coord.game || '').toLowerCase().includes('fire') && !(coord.game || '').toLowerCase().includes('bgmi') && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><FaGamepad /> {coord.game}</span>
+                              )}
                             </span>
                           )}
                         </div>

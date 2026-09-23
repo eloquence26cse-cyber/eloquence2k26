@@ -24,12 +24,17 @@ import {
   FaGamepad,
   FaStar,
   FaRedoAlt,
-  FaWhatsapp
+  FaWhatsapp,
+  FaFire,
+  FaCrosshairs
 } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getApiUrl, getWsUrl } from '../config/api';
 import { getCachedEvents, fetchEventsData, fetchRegistrationStatus, setCachedRegistrationStatus } from '../services/api.js';
+import { findEvent, normalizeEvent } from '../utils/eventUtils.js';
 import { getEventSticker } from '../data/eventStickers.js';
+import coordinatorsData from '../data/coordinator.js';
+import rulesData from '../data/rules.js';
 import VenueImageModal from '../components/VenueImageModal.jsx';
 
 const ESPORTS_GAMES_DATA = {
@@ -114,9 +119,19 @@ const ESPORTS_GAMES_DATA = {
 };
 
 export default function EventRulesPage({ eventId, from, categoryFilter, initialGame, onNavigate }) {
+  const getStaticFallbackCoordinators = (id, currentEvent) => {
+    if (currentEvent && Array.isArray(currentEvent.coordinators) && currentEvent.coordinators.length > 0) {
+      return currentEvent.coordinators;
+    }
+    if (id && coordinatorsData[id]?.coordinators) {
+      return coordinatorsData[id].coordinators;
+    }
+    return [];
+  };
+
   const [eventsList, setEventsList] = useState(() => getCachedEvents() || []);
   const [loading, setLoading] = useState(false);
-  const [liveCoordinators, setLiveCoordinators] = useState([]);
+  const [liveCoordinators, setLiveCoordinators] = useState(() => getStaticFallbackCoordinators(eventId));
   const [isRegClosed, setIsRegClosed] = useState(false);
   const [showVenueModal, setShowVenueModal] = useState(false);
 
@@ -232,24 +247,26 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
     return () => { isMounted = false; };
   }, [eventId]);
 
-  const event = eventsList.find((e) => e.id === eventId || e.id?.toLowerCase() === eventId?.toLowerCase()) || (eventsList.length > 0 ? eventsList[0] : null);
+  const event = findEvent(eventsList, eventId);
 
   useEffect(() => {
     if (!event?.id) return;
     let isMounted = true;
-    const staticFallback = Array.isArray(event.coordinators) ? event.coordinators : [];
+    const staticFallback = getStaticFallbackCoordinators(event.id, event);
+    setLiveCoordinators(prev => (Array.isArray(prev) && prev.length > 0 ? prev : staticFallback));
+
     fetch(getApiUrl(`/api/coordinators/event/${encodeURIComponent(event.id)}`))
       .then((res) => res.json())
       .then((result) => {
         if (!isMounted) return;
         if (result.success && Array.isArray(result.data) && result.data.length > 0) {
           setLiveCoordinators(result.data);
-        } else {
+        } else if (staticFallback.length > 0) {
           setLiveCoordinators(staticFallback);
         }
       })
       .catch(() => {
-        if (isMounted) setLiveCoordinators(staticFallback);
+        if (isMounted && staticFallback.length > 0) setLiveCoordinators(staticFallback);
       });
     return () => { isMounted = false; };
   }, [event?.id]);
@@ -261,11 +278,15 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
 
   const rulesList = activeEsportsData
     ? activeEsportsData.rules
-    : ((event && Array.isArray(event.rules) && event.rules.length > 0) ? event.rules : []);
+    : ((event && Array.isArray(event.rules) && event.rules.length > 0)
+        ? event.rules
+        : (rulesData[event?.id]?.rules || []));
 
   const rounds = activeEsportsData
     ? activeEsportsData.rounds
-    : ((event && Array.isArray(event.rounds) && event.rounds.length > 0) ? event.rounds : []);
+    : ((event && Array.isArray(event.rounds) && event.rounds.length > 0)
+        ? event.rounds
+        : (rulesData[event?.id]?.rounds || []));
 
   const displayDescription = activeEsportsData
     ? activeEsportsData.description
@@ -289,21 +310,24 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
 
   const displayTeamSize = activeEsportsData
     ? activeEsportsData.teamSize
-    : event?.teamSize;
+    : (event?.teamSize || event?.team_size);
 
   const displayFeeType = activeEsportsData
     ? activeEsportsData.feeType
-    : event?.feeType;
+    : (event?.feeType || event?.fee_type || 'per_head');
 
   const displayIsTeam = activeEsportsData
     ? activeEsportsData.isTeam
-    : event?.isTeam;
+    : Boolean(event?.isTeam || event?.is_team);
 
+  const displayMaxMembers = activeEsportsData
+    ? 4
+    : Number(event?.maxMembers || event?.max_members || (displayIsTeam ? 3 : 1));
+
+  const staticFallbackCoords = getStaticFallbackCoordinators(event?.id, event);
   const allCoords = (Array.isArray(liveCoordinators) && liveCoordinators.length > 0)
     ? liveCoordinators
-    : (event && Array.isArray(event.coordinators) && event.coordinators.length > 0
-        ? event.coordinators
-        : []);
+    : staticFallbackCoords;
 
   const [showMobileStickyBar, setShowMobileStickyBar] = useState(false);
   // ONLY show Lead Coordinators publicly on Event Details (Coordinators & Sub-Coordinators are visible only in internal Coordinator login)
@@ -408,7 +432,7 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
     if (isEsports) {
       if (!selectedEsportsGame) {
         toast('Please choose Free Fire or BGMI below to proceed', {
-          icon: '🎮',
+          icon: <FaGamepad style={{ color: '#38bdf8' }} />,
           style: {
             background: '#04140a',
             color: '#39FF88',
@@ -562,10 +586,17 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
                 style={{
                   background: selectedEsportsGame === 'FREE FIRE' ? 'rgba(255, 107, 0, 0.2)' : 'rgba(0, 210, 255, 0.2)',
                   color: selectedEsportsGame === 'FREE FIRE' ? '#ff9d42' : '#38bdf8',
-                  borderColor: selectedEsportsGame === 'FREE FIRE' ? 'rgba(255, 107, 0, 0.5)' : 'rgba(0, 210, 255, 0.5)'
+                  borderColor: selectedEsportsGame === 'FREE FIRE' ? 'rgba(255, 107, 0, 0.5)' : 'rgba(0, 210, 255, 0.5)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
                 }}
               >
-                {selectedEsportsGame === 'FREE FIRE' ? '🔥 FREE FIRE SQUAD' : '🎯 BGMI SQUAD'}
+                {selectedEsportsGame === 'FREE FIRE' ? (
+                  <><FaFire style={{ color: '#ff9d42' }} /> FREE FIRE SQUAD</>
+                ) : (
+                  <><FaCrosshairs style={{ color: '#38bdf8' }} /> BGMI SQUAD</>
+                )}
               </span>
             )}
           </div>
@@ -640,7 +671,9 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
                     onClick={() => handleSelectGame('FREE FIRE')}
                     id="btn-select-freefire"
                   >
-                    <span className="esports-pill-text">🔥 FREE FIRE</span>
+                    <span className="esports-pill-text" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <FaFire style={{ color: '#ff9d42' }} /> FREE FIRE
+                    </span>
                     <FaArrowRight className="esports-pill-arrow" />
                   </button>
 
@@ -650,7 +683,9 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
                     onClick={() => handleSelectGame('BGMI')}
                     id="btn-select-bgmi"
                   >
-                    <span className="esports-pill-text">🎯 BGMI</span>
+                    <span className="esports-pill-text" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <FaCrosshairs style={{ color: '#38bdf8' }} /> BGMI
+                    </span>
                     <FaArrowRight className="esports-pill-arrow" />
                   </button>
                 </motion.div>
@@ -665,8 +700,12 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
                   className="esports-pills-row esports-selected-single-row"
                 >
                   <div className={`esports-game-pill-btn is-active is-selected-single ${selectedEsportsGame === 'FREE FIRE' ? 'arena-selected-ff' : 'arena-selected-bgmi'}`}>
-                    <span className="esports-pill-text">
-                      {selectedEsportsGame === 'FREE FIRE' ? '🔥 FREE FIRE' : '🎯 BGMI'}
+                    <span className="esports-pill-text" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      {selectedEsportsGame === 'FREE FIRE' ? (
+                        <><FaFire style={{ color: '#ff9d42' }} /> FREE FIRE</>
+                      ) : (
+                        <><FaCrosshairs style={{ color: '#38bdf8' }} /> BGMI</>
+                      )}
                     </span>
                     <FaCheckCircle className="esports-pill-check" />
                   </div>
@@ -714,7 +753,9 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
               {/* Free Fire Arena Preview Card */}
               <div className="esports-arena-interactive-card arena-card-freefire">
                 <div className="arena-card-topbar">
-                  <span className="arena-track-badge ff-badge">🔥 Free Fire Arena</span>
+                  <span className="arena-track-badge ff-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    <FaFire style={{ color: '#ff9d42' }} /> Free Fire Arena
+                  </span>
                   <span className="arena-price-badge">₹200 / Squad</span>
                 </div>
                 <div className="arena-card-info">
@@ -777,7 +818,9 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
               {/* BGMI Arena Preview Card */}
               <div className="esports-arena-interactive-card arena-card-bgmi">
                 <div className="arena-card-topbar">
-                  <span className="arena-track-badge bgmi-badge">🎯 BGMI Arena</span>
+                  <span className="arena-track-badge bgmi-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    <FaCrosshairs style={{ color: '#38bdf8' }} /> BGMI Arena
+                  </span>
                   <span className="arena-price-badge">₹200 / Squad</span>
                 </div>
                 <div className="arena-card-info">
@@ -913,9 +956,13 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
                         <span className="rules-box-icon"><FaUsers /></span>
                         <span className="rules-box-label">MEMBERS</span>
                       </div>
-                      <div className="rules-box-value">{displayTeamSize}</div>
+                      <div className="rules-box-value">
+                        {displayTeamSize || (displayIsTeam ? `Max ${displayMaxMembers} Members` : 'Individual')}
+                      </div>
                       <span className="rules-box-subhint">
-                        {displayIsTeam ? 'Team competition' : 'Solo entry'}
+                        {displayIsTeam
+                          ? (displayMaxMembers > 1 ? `Team (Max ${displayMaxMembers} members)` : 'Team competition')
+                          : 'Solo entry'}
                       </span>
                     </div>
                   </div>
@@ -959,10 +1006,13 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
                                     : (isEsports && selectedEsportsGame === 'BGMI'
                                         ? 'rgba(0, 210, 255, 0.35)'
                                         : 'rgba(57, 255, 136, 0.25)')
-                                }`
+                                }`,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px'
                               }}
                             >
-                              ⚡ {hl}
+                              <FaBolt style={{ fontSize: '0.68rem' }} /> {hl}
                             </span>
                           ))}
                         </div>
@@ -1026,19 +1076,36 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
                         <h2 className="rules-card-title">
                           <FaLayerGroup className="rules-card-icon" /> Round Structure
                         </h2>
-                        <span className="rules-count-badge">{rounds.length} Rounds</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="rules-count-badge">{rounds.length} Rounds</span>
+                        </div>
                       </div>
                       <div className="rules-rounds-grid">
-                        {rounds.map((rnd, i) => (
-                          <div key={i} className="rules-round-card">
-                            <div className="rules-round-header">
-                              <span className="rules-round-num">ROUND {i + 1}</span>
-                              {rnd.time && <span className="rules-round-time">{rnd.time}</span>}
+                        {rounds.map((rnd, i) => {
+                          const isObj = typeof rnd === 'object' && rnd !== null;
+                          const roundTitle = isObj
+                            ? (rnd.name || rnd.title || `Round ${i + 1}`)
+                            : (typeof rnd === 'string' && rnd.includes(':') ? rnd.split(':')[0].trim() : (rnd || `Round ${i + 1}`));
+                          const roundTime = isObj
+                            ? (rnd.time || rnd.duration || '')
+                            : '';
+                          const roundDesc = isObj
+                            ? (rnd.desc || rnd.description || '')
+                            : (typeof rnd === 'string' && rnd.includes(':') ? rnd.substring(rnd.indexOf(':') + 1).trim() : '');
+
+                          return (
+                            <div key={i} className="rules-round-card">
+                              <div className="rules-round-header">
+                                <span className="rules-round-num">
+                                  {isObj && rnd.round ? rnd.round.toUpperCase() : `ROUND ${i + 1}`}
+                                </span>
+                                {roundTime && <span className="rules-round-time">{roundTime}</span>}
+                              </div>
+                              <h4 className="rules-round-title">{roundTitle}</h4>
+                              {roundDesc && <p className="rules-round-desc">{roundDesc}</p>}
                             </div>
-                            <h4 className="rules-round-title">{rnd.name}</h4>
-                            {rnd.desc && <p className="rules-round-desc">{rnd.desc}</p>}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </motion.div>
                   )}
@@ -1054,9 +1121,18 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
                       <div className="rules-card-header">
                         <h2 className="rules-card-title">
                           <FaHeadset className="rules-card-icon" />{' '}
-                          {isEsports && selectedEsportsGame
-                            ? `${selectedEsportsGame === 'FREE FIRE' ? '🔥 Free Fire' : '🎯 BGMI'} Coordinators & Contact`
-                            : 'Event Coordinators & Contact'}
+                          {isEsports && selectedEsportsGame ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                              {selectedEsportsGame === 'FREE FIRE' ? (
+                                <><FaFire style={{ color: '#ff9d42' }} /> Free Fire</>
+                              ) : (
+                                <><FaCrosshairs style={{ color: '#38bdf8' }} /> BGMI</>
+                              )}{' '}
+                              Coordinators & Contact
+                            </span>
+                          ) : (
+                            'Event Coordinators & Contact'
+                          )}
                         </h2>
                         <span className="rules-count-badge">
                           {coordsList.length} Lead Coordinator{coordsList.length !== 1 ? 's' : ''}
@@ -1074,8 +1150,13 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
                                     className={`rules-coord-game-pill ${
                                       coord.game.toLowerCase().includes('fire') ? 'pill-ff' : 'pill-bgmi'
                                     }`}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                                   >
-                                    {coord.game.toLowerCase().includes('fire') ? '🔥 Free Fire' : '🎯 BGMI'}
+                                    {coord.game.toLowerCase().includes('fire') ? (
+                                      <><FaFire style={{ color: '#ff9d42' }} /> Free Fire</>
+                                    ) : (
+                                      <><FaCrosshairs style={{ color: '#38bdf8' }} /> BGMI</>
+                                    )}
                                   </span>
                                 )}
                               </div>

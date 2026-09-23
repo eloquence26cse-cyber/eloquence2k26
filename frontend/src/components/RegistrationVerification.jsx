@@ -23,10 +23,12 @@ import {
   FaGamepad,
   FaEye,
   FaBan,
-  FaFilePdf
+  FaFilePdf,
+  FaImage
 } from 'react-icons/fa';
 import { getApiUrl } from '../config/api';
 import defaultEvents from '../data/events.js';
+import PaymentScreenshotViewerModal from './PaymentScreenshotViewerModal.jsx';
 
 export default function RegistrationVerification({
   registrationsList = [],
@@ -52,6 +54,9 @@ export default function RegistrationVerification({
 
   // View Flag Reason Modal State
   const [viewFlagModalReg, setViewFlagModalReg] = useState(null);
+
+  // Payment Screenshot Viewer Modal State
+  const [viewerReg, setViewerReg] = useState(null);
 
   // Helper to extract detailed team members from any record format
   const extractTeamMembers = (r) => {
@@ -126,6 +131,24 @@ export default function RegistrationVerification({
       r.razorpay_payment_id ||
       ''
     ).toString().trim();
+  };
+
+  // Helper to extract Payment Screenshot Path from record or venue_snapshot
+  const getRegScreenshot = (r) => {
+    if (!r) return null;
+    if (r.payment_screenshot_path) return r.payment_screenshot_path;
+    if (r.paymentScreenshotPath) return r.paymentScreenshotPath;
+    if (r.screenshotPath) return r.screenshotPath;
+    if (r.screenshot_path) return r.screenshot_path;
+    if (r.venue_snapshot) {
+      try {
+        const snap = typeof r.venue_snapshot === 'string' ? JSON.parse(r.venue_snapshot) : r.venue_snapshot;
+        if (snap) {
+          return snap.payment_screenshot_path || snap.paymentScreenshotPath || snap.screenshotPath || null;
+        }
+      } catch (e) {}
+    }
+    return null;
   };
 
   // Helper to resolve verification status: 'verified' | 'flagged' | 'pending'
@@ -295,8 +318,8 @@ export default function RegistrationVerification({
     }
   };
 
-  // Verify / Unverify Handler
-  const handleVerify = async (reg, targetStatus = 'verified') => {
+  // Direct execution of verify / unverify API call
+  const executeDirectVerify = async (reg, targetStatus = 'verified') => {
     const id = reg.id || reg.registrationId || reg.ticket_code || reg.ticketCode;
     setIsProcessingId(id);
 
@@ -331,6 +354,35 @@ export default function RegistrationVerification({
     } finally {
       setIsProcessingId(null);
     }
+  };
+
+  // Verify / Unverify Trigger
+  // Ensures admin views the payment screenshot before verifying paid registrations
+  const handleVerify = async (reg, targetStatus = 'verified') => {
+    if (targetStatus === 'unverify' || targetStatus === 'pending') {
+      return executeDirectVerify(reg, 'pending');
+    }
+
+    const fee = Number(reg.totalAmount || reg.totalFee || reg.total_fee || 0);
+    const screenshotPath = getRegScreenshot(reg);
+    const hasScreenshot = Boolean(screenshotPath);
+
+    if (fee > 0) {
+      if (hasScreenshot) {
+        // Open modal so admin can view and inspect screenshot before confirming verification
+        setViewerReg(reg);
+        return;
+      } else {
+        toast.error('Cannot verify: Payment screenshot has not been uploaded for this paid registration. Participant must provide payment proof.', {
+          icon: <FaExclamationTriangle style={{ color: '#ef4444' }} />,
+          duration: 5000
+        });
+        return;
+      }
+    }
+
+    // Free event without fee: verify directly
+    return executeDirectVerify(reg, 'verified');
   };
 
   // Open Flag Modal
@@ -1273,6 +1325,37 @@ export default function RegistrationVerification({
                         <div style={{ fontSize: '0.72rem', color: isDark ? '#6b7280' : '#94a3b8', marginTop: '3px' }}>
                           Method: {r.paymentMethod || r.payment_method || 'UPI_QR'}
                         </div>
+                        {/* Payment Screenshot Option */}
+                        <div style={{ marginTop: '6px' }}>
+                          {getRegScreenshot(r) ? (
+                            <button
+                              type="button"
+                              onClick={() => setViewerReg(r)}
+                              style={{
+                                background: 'rgba(2, 132, 199, 0.18)',
+                                border: '1px solid #38bdf8',
+                                color: '#38bdf8',
+                                padding: '0.28rem 0.65rem',
+                                borderRadius: '6px',
+                                fontSize: '0.76rem',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)'
+                              }}
+                              title="Click to view and inspect uploaded payment screenshot"
+                            >
+                              <FaImage size={11} />
+                              <span>View Screenshot</span>
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.72rem', color: isDark ? '#64748b' : '#94a3b8', fontStyle: 'italic' }}>
+                              {Number(r.totalAmount || r.totalFee || r.total_fee || 0) > 0 ? 'Screenshot: Not uploaded' : 'Free event'}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* 5. STATUS CELL */}
@@ -1363,13 +1446,15 @@ export default function RegistrationVerification({
                       <td style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', color: isDark ? '#9ca3af' : '#64748b' }}>
                         <div>{r.timestamp || (r.createdAt ? new Date(r.createdAt).toLocaleString('en-IN') : 'N/A')}</div>
                         {isVerified && (r.verifiedAt || r.verified_at) && (
-                          <div style={{ fontSize: '0.7rem', color: '#10b981', marginTop: '2px' }}>
-                            ✓ Verified by {r.verifiedBy || r.verified_by || 'Admin'}
+                          <div style={{ fontSize: '0.7rem', color: '#10b981', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <FaCheckCircle size={10} />
+                            <span>Verified by {r.verifiedBy || r.verified_by || 'Admin'}</span>
                           </div>
                         )}
                         {isFlagged && (r.flaggedAt || r.flagged_at) && (
-                          <div style={{ fontSize: '0.7rem', color: '#ef4444', marginTop: '2px' }}>
-                            ⚠ Flagged by {r.flaggedBy || r.flagged_by || 'Admin'}
+                          <div style={{ fontSize: '0.7rem', color: '#ef4444', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <FaExclamationTriangle size={10} />
+                            <span>Flagged by {r.flaggedBy || r.flagged_by || 'Admin'}</span>
                           </div>
                         )}
                       </td>
@@ -1377,31 +1462,73 @@ export default function RegistrationVerification({
                       {/* 7. ACTIONS CELL */}
                       <td style={{ padding: '1rem 1.25rem', textAlign: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'nowrap' }}>
-                          {/* 1. VERIFY BUTTON */}
+                          {/* 0. VIEW SCREENSHOT ACTION BUTTON (IF UPLOADED) */}
+                          {getRegScreenshot(r) && (
+                            <button
+                              type="button"
+                              onClick={() => setViewerReg(r)}
+                              style={{
+                                background: 'rgba(2, 132, 199, 0.18)',
+                                border: '1px solid rgba(56, 189, 248, 0.5)',
+                                color: '#38bdf8',
+                                borderRadius: '6px',
+                                padding: '0.42rem 0.65rem',
+                                fontSize: '0.78rem',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              title="View and inspect payment screenshot"
+                            >
+                              <FaImage size={11} />
+                              <span>Screenshot</span>
+                            </button>
+                          )}
+
+                          {/* 1. VERIFY PAYMENT BUTTON */}
                           {!isVerified ? (
                             <button
                               type="button"
                               onClick={() => handleVerify(r, 'verified')}
                               disabled={isBusy}
                               style={{
-                                background: '#10b981',
+                                background: getRegScreenshot(r)
+                                  ? '#10b981'
+                                  : (Number(r.totalAmount || r.totalFee || r.total_fee || 0) > 0 ? (isDark ? '#374151' : '#cbd5e1') : '#10b981'),
                                 border: 'none',
-                                color: '#ffffff',
+                                color: (getRegScreenshot(r) || Number(r.totalAmount || r.totalFee || r.total_fee || 0) === 0)
+                                  ? '#ffffff'
+                                  : (isDark ? '#9ca3af' : '#475569'),
                                 borderRadius: '6px',
                                 padding: '0.42rem 0.75rem',
                                 fontSize: '0.78rem',
                                 fontWeight: '700',
-                                cursor: 'pointer',
+                                cursor: isBusy ? 'not-allowed' : 'pointer',
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '4px',
                                 transition: 'background 0.2s',
                                 opacity: isBusy ? 0.6 : 1
                               }}
-                              title="Confirm payment & mark verified"
+                              title={
+                                getRegScreenshot(r)
+                                  ? 'View payment screenshot & verify participant'
+                                  : (Number(r.totalAmount || r.totalFee || r.total_fee || 0) > 0 ? 'Cannot verify: Screenshot proof missing' : 'Confirm registration')
+                              }
                             >
-                              <FaCheckCircle size={11} />
-                              <span>Verify</span>
+                              {getRegScreenshot(r) ? (
+                                <>
+                                  <FaImage size={11} />
+                                  <span>View &amp; Verify</span>
+                                </>
+                              ) : (
+                                <>
+                                  <FaCheckCircle size={11} />
+                                  <span>Verify Payment</span>
+                                </>
+                              )}
                             </button>
                           ) : (
                             <button
@@ -1425,7 +1552,7 @@ export default function RegistrationVerification({
                             </button>
                           )}
 
-                          {/* 2. FLAG BUTTON */}
+                          {/* 2. REJECT PAYMENT BUTTON */}
                           {!isFlagged ? (
                             <button
                               type="button"
@@ -1445,10 +1572,10 @@ export default function RegistrationVerification({
                                 gap: '4px',
                                 opacity: isBusy ? 0.6 : 1
                               }}
-                              title="Flag this UTR for investigation"
+                              title="Reject payment / flag for investigation"
                             >
                               <FaExclamationTriangle size={11} />
-                              <span>Flag</span>
+                              <span>Reject Payment</span>
                             </button>
                           ) : (
                             <button
@@ -1773,6 +1900,104 @@ export default function RegistrationVerification({
                 </div>
               </div>
 
+              {/* Payment Screenshot Proof in Details */}
+              {(() => {
+                const screenshotPath = getRegScreenshot(selectedReg);
+                const fee = Number(selectedReg.totalAmount || selectedReg.totalFee || selectedReg.total_fee || 0);
+
+                return (
+                  <div
+                    style={{
+                      background: screenshotPath
+                        ? (isDark ? 'rgba(2, 132, 199, 0.12)' : '#f0f9ff')
+                        : (isDark ? '#1e293b' : '#f8fafc'),
+                      border: screenshotPath
+                        ? (isDark ? '1px solid rgba(56, 189, 248, 0.45)' : '1px solid #bae6fd')
+                        : (isDark ? '1px solid #334155' : '1px solid #e2e8f0'),
+                      borderRadius: '12px',
+                      padding: '0.9rem 1.1rem',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '0.85rem'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div
+                        onClick={() => {
+                          if (screenshotPath) setViewerReg(selectedReg);
+                        }}
+                        style={{
+                          width: '42px',
+                          height: '42px',
+                          borderRadius: '10px',
+                          background: screenshotPath
+                            ? (isDark ? 'rgba(2, 132, 199, 0.25)' : 'rgba(2, 132, 199, 0.15)')
+                            : (isDark ? '#334155' : '#e2e8f0'),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: screenshotPath ? '#38bdf8' : (isDark ? '#94a3b8' : '#64748b'),
+                          fontSize: '18px',
+                          cursor: screenshotPath ? 'pointer' : 'default',
+                          flexShrink: 0
+                        }}
+                        title={screenshotPath ? 'Click to view full screenshot' : 'No screenshot'}
+                      >
+                        <FaImage />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: '700', color: isDark ? '#94a3b8' : '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Payment Screenshot Proof
+                        </div>
+                        <div style={{ fontSize: '0.86rem', color: isDark ? '#f8fafc' : '#0f172a', marginTop: '2px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {screenshotPath ? (
+                            <>
+                              <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+                              <span style={{ color: isDark ? '#38bdf8' : '#0284c7' }}>Uploaded &amp; Available for Verification</span>
+                            </>
+                          ) : (
+                            <span style={{ color: fee > 0 ? (isDark ? '#f87171' : '#dc2626') : (isDark ? '#94a3b8' : '#64748b') }}>
+                              {fee > 0 ? 'Not Uploaded (Proof Missing)' : 'Free Event (No Screenshot Needed)'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {screenshotPath ? (
+                      <button
+                        type="button"
+                        onClick={() => setViewerReg(selectedReg)}
+                        style={{
+                          background: '#0284c7',
+                          border: 'none',
+                          color: '#ffffff',
+                          padding: '0.5rem 1.15rem',
+                          borderRadius: '8px',
+                          fontSize: '0.84rem',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <FaImage size={13} />
+                        <span>View Screenshot</span>
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: '0.8rem', color: isDark ? '#64748b' : '#94a3b8', fontStyle: 'italic' }}>
+                        {fee > 0 ? 'Screenshot: Not uploaded' : 'Free event'}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Team Details (Full squad roster) */}
               {(() => {
                 const members = extractTeamMembers(selectedReg);
@@ -1877,7 +2102,49 @@ export default function RegistrationVerification({
               })()}
             </div>
 
-            <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                {!selectedReg.is_verified && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const regToView = selectedReg;
+                      setSelectedReg(null);
+                      const sPath = getRegScreenshot(regToView);
+                      if (sPath) {
+                        setViewerReg(regToView);
+                      } else {
+                        handleVerify(regToView, 'verified');
+                      }
+                    }}
+                    style={{
+                      background: '#10b981',
+                      border: 'none',
+                      color: '#ffffff',
+                      padding: '0.6rem 1.25rem',
+                      borderRadius: '8px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+                    }}
+                  >
+                    {getRegScreenshot(selectedReg) ? (
+                      <>
+                        <FaImage size={13} />
+                        <span>View Screenshot &amp; Verify</span>
+                      </>
+                    ) : (
+                      <>
+                        <FaCheckCircle size={13} />
+                        <span>Confirm Verification</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedReg(null)}
@@ -2030,6 +2297,23 @@ export default function RegistrationVerification({
           </div>
         </div>
       )}
+
+      {/* ── MODAL: PAYMENT SCREENSHOT VIEWER ───────────────────────────── */}
+      <PaymentScreenshotViewerModal
+        registration={viewerReg}
+        token={token}
+        isOpen={Boolean(viewerReg)}
+        onClose={() => setViewerReg(null)}
+        onVerify={async (reg) => {
+          await executeDirectVerify(reg, 'verified');
+          setViewerReg(null);
+        }}
+        onReject={async (reg) => {
+          handleOpenFlagModal(reg);
+          setViewerReg(null);
+        }}
+        isDark={isDark}
+      />
     </div>
   );
 }

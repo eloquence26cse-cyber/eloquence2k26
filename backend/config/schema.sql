@@ -100,6 +100,7 @@ ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEF
 ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS flag_reason TEXT;
 ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS flagged_at TIMESTAMPTZ;
 ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS flagged_by TEXT;
+ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS payment_screenshot_path TEXT;
 
 -- ------------------------------------------------------------------------------
 -- 3. REGISTRATION MEMBERS TABLE
@@ -317,5 +318,41 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role
 
 -- Notify schema cache reload
 NOTIFY pgrst, 'reload schema';
+
+-- ------------------------------------------------------------------------------
+-- 14. SUPABASE STORAGE BUCKET FOR PAYMENT SCREENSHOTS
+-- ------------------------------------------------------------------------------
+-- Create dedicated private bucket for compressed payment screenshots
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'payment-screenshots',
+    'payment-screenshots',
+    false,
+    10485760, -- 10MB limit
+    ARRAY['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage RLS Policies for payment-screenshots bucket
+CREATE POLICY "Allow service_role full access to payment-screenshots"
+ON storage.objects FOR ALL
+TO service_role
+USING (bucket_id = 'payment-screenshots');
+
+CREATE POLICY "Allow authenticated full access to payment-screenshots"
+ON storage.objects FOR ALL
+TO authenticated
+USING (bucket_id = 'payment-screenshots');
+
+CREATE POLICY "Allow anon insert to payment-screenshots"
+ON storage.objects FOR INSERT
+TO anon
+WITH CHECK (bucket_id = 'payment-screenshots');
+
+CREATE POLICY "Allow anon select to payment-screenshots"
+ON storage.objects FOR SELECT
+TO anon
+USING (bucket_id = 'payment-screenshots');
+
 
 
