@@ -1570,7 +1570,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
             id: u.id,
             username: u.username,
             role: u.role,
-            assignedEvents: Array.isArray(u.assignedEvents) ? u.assignedEvents : (u.eventId ? [u.eventId] : [])
+            assignedEvents: Array.isArray(u.assignedEvents) ? u.assignedEvents : (Array.isArray(u.assigned_events) ? u.assigned_events : (u.eventId ? [u.eventId] : []))
           })));
         }
       })
@@ -1581,7 +1581,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
             id: u.id,
             username: u.username,
             role: u.role,
-            assignedEvents: Array.isArray(u.assignedEvents) ? u.assignedEvents : (u.eventId ? [u.eventId] : [])
+            assignedEvents: Array.isArray(u.assignedEvents) ? u.assignedEvents : (Array.isArray(u.assigned_events) ? u.assigned_events : (u.eventId ? [u.eventId] : []))
           })));
         }
       });
@@ -1589,7 +1589,8 @@ export default function AdminDashboard({ token, user, onLogout }) {
 
   const handleOpenAllocModal = (userItem) => {
     setSelectedAllocUser(userItem);
-    setSelectedAllocEvents(Array.isArray(userItem.assignedEvents) ? [...userItem.assignedEvents] : (userItem.eventId ? [userItem.eventId] : []));
+    const currAssigned = Array.isArray(userItem.assignedEvents) ? userItem.assignedEvents : (Array.isArray(userItem.assigned_events) ? userItem.assigned_events : (userItem.eventId ? [userItem.eventId] : []));
+    setSelectedAllocEvents([...currAssigned]);
     setIsAllocModalOpen(true);
   };
 
@@ -1620,8 +1621,14 @@ export default function AdminDashboard({ token, user, onLogout }) {
       if (res.success) {
         toast.success(`Allocated ${selectedAllocEvents.length} event(s) to ${selectedAllocUser.username}!`, { id: toastId });
         setAllocUsersList(prev => prev.map(u => {
-          if (u.id === selectedAllocUser.id || u.username === selectedAllocUser.username) {
-            return { ...u, assignedEvents: selectedAllocEvents, eventId: selectedAllocEvents[0] || null };
+          if (u.id === selectedAllocUser.id || String(u.username || '').toLowerCase() === String(selectedAllocUser.username || '').toLowerCase()) {
+            return { ...u, assignedEvents: selectedAllocEvents, assigned_events: selectedAllocEvents, eventId: selectedAllocEvents[0] || null };
+          }
+          return u;
+        }));
+        setUsers(prev => prev.map(u => {
+          if (u.id === selectedAllocUser.id || String(u.username || '').toLowerCase() === String(selectedAllocUser.username || '').toLowerCase()) {
+            return { ...u, assignedEvents: selectedAllocEvents, assigned_events: selectedAllocEvents, eventId: selectedAllocEvents[0] || null };
           }
           return u;
         }));
@@ -3103,7 +3110,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
         id: u.id,
         username: u.username,
         role: u.role,
-        assignedEvents: Array.isArray(u.assignedEvents) ? u.assignedEvents : (u.eventId ? [u.eventId] : [])
+        assignedEvents: Array.isArray(u.assignedEvents) ? u.assignedEvents : (Array.isArray(u.assigned_events) ? u.assigned_events : (u.eventId ? [u.eventId] : []))
       })) : []);
 
   const filteredAllocUsers = displayAllocUsers.filter(u => {
@@ -3112,7 +3119,8 @@ export default function AdminDashboard({ token, user, onLogout }) {
     if (!q) return true;
     const uName = (u.username || '').toLowerCase();
     const uRole = (u.role || '').toLowerCase();
-    const assigned = (Array.isArray(u.assignedEvents) ? u.assignedEvents.join(' ') : (u.eventId || '')).toLowerCase();
+    const evts = Array.isArray(u.assignedEvents) ? u.assignedEvents : (Array.isArray(u.assigned_events) ? u.assigned_events : (u.eventId ? [u.eventId] : []));
+    const assigned = evts.join(' ').toLowerCase();
     return uName.includes(q) || uRole.includes(q) || assigned.includes(q);
   });
 
@@ -5806,7 +5814,34 @@ export default function AdminDashboard({ token, user, onLogout }) {
                     </thead>
                     <tbody>
                       {filteredAllocUsers.map(userItem => {
-                        const assigned = Array.isArray(userItem.assignedEvents) ? userItem.assignedEvents : (userItem.eventId ? [userItem.eventId] : []);
+                        let assigned = Array.isArray(userItem.assignedEvents) && userItem.assignedEvents.length > 0 
+                          ? userItem.assignedEvents 
+                          : (Array.isArray(userItem.assigned_events) && userItem.assigned_events.length > 0 
+                              ? userItem.assigned_events 
+                              : (userItem.eventId ? [userItem.eventId] : []));
+
+                        if (typeof assigned === 'string') {
+                          try { assigned = JSON.parse(assigned); } catch (_) { assigned = [assigned]; }
+                        }
+                        if (!Array.isArray(assigned)) assigned = [];
+
+                        if (assigned.length === 0 && userItem?.username) {
+                          const uName = String(userItem.username || '').toLowerCase().trim();
+                          const matchedCoord = (coordinators || []).find(c => {
+                            const cName = String(c.name || '').toLowerCase().trim();
+                            return cName === uName || (uName.length >= 3 && (cName.includes(uName) || uName.includes(cName.split(' ')[0])));
+                          });
+                          if (matchedCoord) {
+                            let cEvts = matchedCoord.assignedEvents || matchedCoord.assigned_events;
+                            if (typeof cEvts === 'string') {
+                              try { cEvts = JSON.parse(cEvts); } catch (_) { cEvts = [cEvts]; }
+                            }
+                            if (Array.isArray(cEvts) && cEvts.length > 0) {
+                              assigned = cEvts;
+                            }
+                          }
+                        }
+
                         const isAllocated = assigned.length > 0;
 
                         return (
@@ -5824,6 +5859,41 @@ export default function AdminDashboard({ token, user, onLogout }) {
                                 <div>
                                   <div style={S.strongText}>{userItem.username}</div>
                                   <div style={S.tableSubText}>ID: #{userItem.id}</div>
+                                  {/* Mobile & Compact Allocated Event Pills */}
+                                  {isAllocated && (
+                                    <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                      {assigned.map(evtId => {
+                                        const evtObj = eventsList.find(e => e.id === evtId);
+                                        const isTech = String(evtId).toLowerCase().startsWith('tech');
+                                        return (
+                                          <span
+                                            key={evtId}
+                                            style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '4px',
+                                              background: isDark 
+                                                ? (isTech ? 'rgba(56, 189, 248, 0.18)' : 'rgba(236, 72, 153, 0.18)') 
+                                                : (isTech ? '#eff6ff' : '#fdf2f8'),
+                                              color: isDark 
+                                                ? (isTech ? '#38bdf8' : '#f472b6') 
+                                                : (isTech ? '#0284c7' : '#db2777'),
+                                              border: isDark 
+                                                ? (isTech ? '1px solid rgba(56, 189, 248, 0.35)' : '1px solid rgba(236, 72, 153, 0.35)') 
+                                                : (isTech ? '1px solid #bae6fd' : '1px solid #fbcfe8'),
+                                              padding: '0.12rem 0.45rem',
+                                              borderRadius: '6px',
+                                              fontSize: '0.72rem',
+                                              fontWeight: '700'
+                                            }}
+                                          >
+                                            <span style={{ fontSize: '0.62rem', opacity: 0.8, textTransform: 'uppercase' }}>{evtId}</span>
+                                            <span>• {evtObj ? evtObj.name : evtId}</span>
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </td>
@@ -9955,7 +10025,6 @@ export default function AdminDashboard({ token, user, onLogout }) {
                       type="text"
                       required={!isLeadCoordinator}
                       disabled={isLeadCoordinator}
-                      readOnly={isLeadCoordinator}
                       placeholder="e.g. MAIN COORDINATOR TEAM, WEBSITE DEVELOPMENT TEAM, MEDIA & PROMOTIONS TEAM"
                       value={hpTeamRole}
                       onChange={(e) => {

@@ -27,12 +27,13 @@
     "role": "Lead Coordinator",
     "assigned_events": [
       "tech-01",
-      "nontech-05"
+      "nontech-05",
+      "game:BGMI"
     ],
     "is_active": true,
     "display_order": 2,
     "created_at": "2026-09-16T10:16:16.057215+00:00",
-    "updated_at": "2026-09-17T13:12:24.483+00:00"
+    "updated_at": "2026-09-21T04:54:57.658+00:00"
   },
   {
     "id": "coord-tech-02-a",
@@ -147,12 +148,13 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "tech-06"
+      "tech-06",
+      "tech-05"
     ],
     "is_active": true,
     "display_order": 11,
     "created_at": "2026-09-16T10:16:16.707865+00:00",
-    "updated_at": "2026-09-16T10:22:55.182+00:00"
+    "updated_at": "2026-09-22T06:52:46.173+00:00"
   },
   {
     "id": "coord-tech-06-b",
@@ -164,12 +166,13 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "tech-06"
+      "tech-06",
+      "tech-05"
     ],
     "is_active": true,
     "display_order": 12,
     "created_at": "2026-09-16T10:16:16.790034+00:00",
-    "updated_at": "2026-09-16T10:16:16.790034+00:00"
+    "updated_at": "2026-09-22T06:53:47.522+00:00"
   },
   {
     "id": "coord-nontech-01-a",
@@ -186,7 +189,7 @@
     "is_active": true,
     "display_order": 13,
     "created_at": "2026-09-16T10:16:16.888953+00:00",
-    "updated_at": "2026-09-16T10:16:16.888953+00:00"
+    "updated_at": "2026-09-20T14:33:58.077+00:00"
   },
   {
     "id": "coord-nontech-02-a",
@@ -283,12 +286,13 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "nontech-05"
+      "nontech-05",
+      "game:Free Fire"
     ],
     "is_active": true,
     "display_order": 19,
     "created_at": "2026-09-16T10:16:17.452911+00:00",
-    "updated_at": "2026-09-17T13:12:38.604+00:00"
+    "updated_at": "2026-09-21T04:55:13.97+00:00"
   },
   {
     "id": "coord-nontech-05-b",
@@ -300,12 +304,13 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "nontech-05"
+      "nontech-05",
+      "game:Free Fire"
     ],
     "is_active": true,
     "display_order": 20,
     "created_at": "2026-09-16T10:16:17.564049+00:00",
-    "updated_at": "2026-09-17T13:52:03.007+00:00"
+    "updated_at": "2026-09-21T04:55:21.982+00:00"
   },
   {
     "id": "coord-nontech-06-a",
@@ -368,12 +373,30 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "nontech-05"
+      "nontech-05",
+      "game:BGMI"
     ],
     "is_active": true,
     "display_order": 25,
     "created_at": "2026-09-17T13:21:14.64044+00:00",
-    "updated_at": "2026-09-17T13:21:11.488+00:00"
+    "updated_at": "2026-09-21T04:55:05.659+00:00"
+  },
+  {
+    "id": "coord-1790059256233",
+    "name": "shahid Ahamed",
+    "phone": "9876543245",
+    "whatsapp": "9876543212",
+    "email": "shahid@gmail.com",
+    "department": "CSE",
+    "year": "4th Year",
+    "role": "Coordinator",
+    "assigned_events": [
+      "tech-02"
+    ],
+    "is_active": true,
+    "display_order": 26,
+    "created_at": "2026-09-22T06:40:56.404459+00:00",
+    "updated_at": "2026-09-22T06:40:56.233+00:00"
   },
   {
     "id": "coord-1789229485490",

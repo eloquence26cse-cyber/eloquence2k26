@@ -435,13 +435,16 @@ exports.login = async (req, res) => {
           const matched = coordinators.find(c => 
             c.name?.toLowerCase().includes(uName) || uName.includes(c.name?.toLowerCase().split(' ')[0])
           );
-          if (matched && Array.isArray(matched.assignedEvents)) {
-            assignedEvents = matched.assignedEvents;
+          if (matched) {
+            const cEvents = matched.assigned_events || matched.assignedEvents;
+            if (Array.isArray(cEvents) && cEvents.length > 0) {
+              assignedEvents = cEvents;
+            }
           }
         }
 
         const token = jwt.sign(
-          { id: matchedDbUser.id, username: matchedDbUser.username, role: matchedDbUser.role, assignedEvents },
+          { id: matchedDbUser.id, username: matchedDbUser.username, role: matchedDbUser.role, assignedEvents: Array.isArray(assignedEvents) ? assignedEvents : [] },
           JWT_SECRET,
           { expiresIn: '1d' }
         );
@@ -469,20 +472,26 @@ exports.login = async (req, res) => {
   );
 
   if (user) {
-    let assignedEvents = user.assignedEvents || (user.eventId ? [user.eventId] : []);
+    let assignedEvents = user.assigned_events || user.assignedEvents || (user.event_id || user.eventId ? [user.event_id || user.eventId] : []);
+    if (typeof assignedEvents === 'string') {
+      try { assignedEvents = JSON.parse(assignedEvents); } catch (_) { assignedEvents = [assignedEvents]; }
+    }
     if (!Array.isArray(assignedEvents) || assignedEvents.length === 0) {
       const coordinators = getCoordinatorsData();
       const uName = cleanUsername.toLowerCase();
       const matched = coordinators.find(c => 
         c.name?.toLowerCase().includes(uName) || uName.includes(c.name?.toLowerCase().split(' ')[0])
       );
-      if (matched && Array.isArray(matched.assignedEvents)) {
-        assignedEvents = matched.assignedEvents;
+      if (matched) {
+        const cEvents = matched.assigned_events || matched.assignedEvents;
+        if (Array.isArray(cEvents) && cEvents.length > 0) {
+          assignedEvents = cEvents;
+        }
       }
     }
 
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role, assignedEvents }, 
+      { id: user.id, username: user.username, role: user.role, assignedEvents: Array.isArray(assignedEvents) ? assignedEvents : [] }, 
       JWT_SECRET, 
       { expiresIn: '1d' }
     );
@@ -507,7 +516,8 @@ exports.login = async (req, res) => {
   );
 
   if (matchedCoord && (cleanPassword === 'admin' || cleanPassword === 'coordinator123' || cleanPassword === matchedCoord.phone)) {
-    const assignedEvents = Array.isArray(matchedCoord.assignedEvents) ? matchedCoord.assignedEvents : [];
+    const rawEvents = matchedCoord.assigned_events || matchedCoord.assignedEvents;
+    const assignedEvents = Array.isArray(rawEvents) ? rawEvents : [];
     const token = jwt.sign(
       { id: Date.now(), username: matchedCoord.name, role: matchedCoord.role || 'Event Coordinator', assignedEvents }, 
       JWT_SECRET, 
@@ -711,7 +721,7 @@ exports.getUsers = async (req, res) => {
 
   let allUsers = [];
   try {
-    const { data: dbUsers, error } = await supabase.from('users').select('id, username, role').order('id', { ascending: true });
+    const { data: dbUsers, error } = await supabase.from('users').select('*').order('id', { ascending: true });
     if (!error && Array.isArray(dbUsers) && dbUsers.length > 0) {
       allUsers = [...dbUsers];
     }
@@ -719,18 +729,49 @@ exports.getUsers = async (req, res) => {
     console.warn('Supabase getUsers fallback:', e.message);
   }
 
-  const localUsers = getUsersData().map(u => ({ id: u.id, username: u.username, role: u.role }));
+  const localUsers = getUsersData();
   if (allUsers.length === 0) {
     allUsers = [...localUsers];
   } else {
     localUsers.forEach(lu => {
-      if (!allUsers.some(u => u.username === lu.username || u.id === lu.id)) {
+      const luName = String(lu.username || '').toLowerCase().trim();
+      const existingIdx = allUsers.findIndex(u => 
+        (luName && String(u.username || '').toLowerCase().trim() === luName) || 
+        String(u.id) === String(lu.id)
+      );
+      if (existingIdx === -1) {
         allUsers.push(lu);
+      } else {
+        const dbEvts = allUsers[existingIdx].assigned_events || allUsers[existingIdx].assignedEvents;
+        const locEvts = lu.assigned_events || lu.assignedEvents;
+        const dbEvtArray = Array.isArray(dbEvts) ? dbEvts : (typeof dbEvts === 'string' ? [dbEvts] : []);
+        const locEvtArray = Array.isArray(locEvts) ? locEvts : (typeof locEvts === 'string' ? [locEvts] : []);
+
+        if (dbEvtArray.length === 0 && locEvtArray.length > 0) {
+          allUsers[existingIdx].assigned_events = locEvtArray;
+          allUsers[existingIdx].assignedEvents = locEvtArray;
+        }
       }
     });
   }
 
-  res.json({ success: true, data: allUsers });
+  saveUsersData(allUsers);
+
+  const formattedUsers = allUsers.map(u => {
+    let assignedEvents = u.assigned_events || u.assignedEvents || (u.event_id || u.eventId ? [u.event_id || u.eventId] : []);
+    if (typeof assignedEvents === 'string') {
+      try { assignedEvents = JSON.parse(assignedEvents); } catch (_) { assignedEvents = [assignedEvents]; }
+    }
+    return {
+      id: u.id,
+      username: u.username,
+      role: u.role,
+      assignedEvents: Array.isArray(assignedEvents) ? assignedEvents : [],
+      assigned_events: Array.isArray(assignedEvents) ? assignedEvents : []
+    };
+  });
+
+  res.json({ success: true, data: formattedUsers });
 };
 
 exports.createUser = async (req, res) => {
@@ -738,20 +779,40 @@ exports.createUser = async (req, res) => {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 
-  const { username, password, role } = req.body;
+  const { username, password, role, assignedEvents, eventId } = req.body;
   if (!username || !password || !role) {
     return res.status(400).json({ success: false, message: 'Missing fields' });
   }
 
   const users = getUsersData();
-  if (users.find(u => u.username === username)) {
+  if (users.find(u => String(u.username || '').toLowerCase() === String(username || '').toLowerCase())) {
     return res.status(400).json({ success: false, message: 'Username already exists' });
   }
 
-  const newUser = { id: Date.now(), username, password, role };
+  const eventsArray = Array.isArray(assignedEvents) ? assignedEvents : (eventId ? [eventId] : []);
+  const newUser = {
+    id: Date.now(),
+    username: username.trim(),
+    password: password.trim(),
+    role: role.trim(),
+    assigned_events: eventsArray,
+    assignedEvents: eventsArray,
+    event_id: eventsArray[0] || null,
+    eventId: eventsArray[0] || null,
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
 
   try {
-    const { error: dbError } = await supabase.from('users').insert([newUser]);
+    const { error: dbError } = await supabase.from('users').insert([{
+      id: newUser.id,
+      username: newUser.username,
+      password: newUser.password,
+      role: newUser.role,
+      assigned_events: eventsArray,
+      is_active: true
+    }]);
     if (dbError) console.error('Supabase createUser error:', dbError.message);
   } catch (dbErr) {
     console.error('Supabase createUser exception:', dbErr.message);
@@ -760,7 +821,7 @@ exports.createUser = async (req, res) => {
   users.push(newUser);
   saveUsersData(users);
 
-  res.json({ success: true, message: 'User created successfully', data: { id: newUser.id, username: newUser.username, role: newUser.role } });
+  res.json({ success: true, message: 'User created successfully', data: { id: newUser.id, username: newUser.username, role: newUser.role, assignedEvents: eventsArray } });
 };
 
 exports.updateUser = async (req, res) => {
@@ -769,15 +830,15 @@ exports.updateUser = async (req, res) => {
   }
 
   const { id } = req.params;
-  const { username, password, role } = req.body;
-  const userId = parseInt(id, 10);
+  const { username, password, role, assignedEvents } = req.body;
+  const userId = id;
   
   if (!username || !role) {
     return res.status(400).json({ success: false, message: 'Missing fields' });
   }
 
   const users = getUsersData();
-  const userIndex = users.findIndex(u => u.id === userId);
+  const userIndex = users.findIndex(u => String(u.id) === String(userId) || String(u.username).toLowerCase() === String(username).toLowerCase());
 
   if (userIndex !== -1 && users[userIndex].role === 'superadmin' && req.user.role !== 'superadmin') {
     return res.status(403).json({ success: false, message: 'Cannot modify a superadmin' });
@@ -785,6 +846,10 @@ exports.updateUser = async (req, res) => {
 
   const updateFields = { username, role, updated_at: new Date().toISOString() };
   if (password) updateFields.password = password;
+  if (assignedEvents !== undefined) {
+    const eventsArray = Array.isArray(assignedEvents) ? assignedEvents : (assignedEvents ? [assignedEvents] : []);
+    updateFields.assigned_events = eventsArray;
+  }
 
   try {
     const { error: dbErr } = await supabase.from('users').update(updateFields).eq('id', userId);
@@ -797,6 +862,14 @@ exports.updateUser = async (req, res) => {
     users[userIndex].username = username;
     users[userIndex].role = role;
     if (password) users[userIndex].password = password;
+    if (assignedEvents !== undefined) {
+      const eventsArray = Array.isArray(assignedEvents) ? assignedEvents : (assignedEvents ? [assignedEvents] : []);
+      users[userIndex].assignedEvents = eventsArray;
+      users[userIndex].assigned_events = eventsArray;
+      users[userIndex].eventId = eventsArray[0] || null;
+      users[userIndex].event_id = eventsArray[0] || null;
+    }
+    users[userIndex].updated_at = new Date().toISOString();
     saveUsersData(users);
   }
 
@@ -809,9 +882,9 @@ exports.deleteUser = async (req, res) => {
   }
 
   const { id } = req.params;
-  const userId = parseInt(id, 10);
+  const userId = id;
   const users = getUsersData();
-  const userIndex = users.findIndex(u => u.id === userId);
+  const userIndex = users.findIndex(u => String(u.id) === String(userId));
 
   if (userIndex !== -1) {
     if (users[userIndex].username === 'admin') {
@@ -820,7 +893,7 @@ exports.deleteUser = async (req, res) => {
     if (users[userIndex].role === 'superadmin' && req.user.role !== 'superadmin') {
       return res.status(403).json({ success: false, message: 'Cannot delete a superadmin' });
     }
-    if (users[userIndex].id === req.user.id) {
+    if (String(users[userIndex].id) === String(req.user.id)) {
       return res.status(400).json({ success: false, message: 'Cannot delete your own account' });
     }
     users.splice(userIndex, 1);
@@ -840,41 +913,103 @@ exports.deleteUser = async (req, res) => {
 // ==================== EVENT ALLOCATION MANAGEMENT ====================
 exports.getEventAllocations = async (req, res) => {
   try {
-    let allUsers = [];
+    let dbUsers = [];
     try {
-      const { data: dbUsers, error } = await supabase.from('users').select('*').order('id', { ascending: true });
-      if (!error && Array.isArray(dbUsers) && dbUsers.length > 0) {
-        allUsers = [...dbUsers];
+      const { data: fetchDbUsers, error } = await supabase.from('users').select('*').order('id', { ascending: true });
+      if (!error && Array.isArray(fetchDbUsers)) {
+        dbUsers = fetchDbUsers;
       }
     } catch (e) {
       console.warn('Supabase getEventAllocations fallback:', e.message);
     }
 
     const localUsers = getUsersData();
-    if (allUsers.length === 0) {
-      allUsers = [...localUsers];
-    } else {
-      localUsers.forEach(lu => {
-        if (!allUsers.some(u => u.username === lu.username || u.id === lu.id)) {
-          allUsers.push(lu);
-        }
-      });
+    const localUserMap = new Map();
+    localUsers.forEach(lu => {
+      if (lu.username) localUserMap.set(String(lu.username).toLowerCase().trim(), lu);
+      if (lu.id) localUserMap.set(String(lu.id), lu);
+    });
+
+    // 2. Query Supabase dedicated event_allocations table live
+    let liveAllocations = [];
+    try {
+      const { data: dbAllocations } = await supabase.from('event_allocations').select('*');
+      if (Array.isArray(dbAllocations) && dbAllocations.length > 0) {
+        liveAllocations = dbAllocations;
+      }
+    } catch (allocErr) {
+      console.warn('Supabase event_allocations fetch note:', allocErr.message);
     }
 
     const coordinators = getCoordinatorsData();
+
+    // Merge strategy: Start from localUsers and merge dbUsers to ensure zero data loss
+    const mergedUserMap = new Map();
+
+    localUsers.forEach(lu => {
+      const key = String(lu.username || lu.id || '').toLowerCase().trim();
+      if (key) {
+        let evts = lu.assignedEvents || lu.assigned_events || (lu.eventId ? [lu.eventId] : []);
+        if (typeof evts === 'string') {
+          try { evts = JSON.parse(evts); } catch (_) { evts = [evts]; }
+        }
+        mergedUserMap.set(key, { ...lu, assignedEvents: Array.isArray(evts) ? evts : [], assigned_events: Array.isArray(evts) ? evts : [] });
+      }
+    });
+
+    dbUsers.forEach(dbU => {
+      const key = String(dbU.username || dbU.id || '').toLowerCase().trim();
+      if (key) {
+        const existing = mergedUserMap.get(key) || {};
+        let dbEvts = dbU.assigned_events || dbU.assignedEvents || (dbU.event_id || dbU.eventId ? [dbU.event_id || dbU.eventId] : []);
+        if (typeof dbEvts === 'string') {
+          try { dbEvts = JSON.parse(dbEvts); } catch (_) { dbEvts = [dbEvts]; }
+        }
+        const existingEvts = existing.assignedEvents || existing.assigned_events || [];
+        const finalEvts = (Array.isArray(dbEvts) && dbEvts.length > 0) ? dbEvts : (Array.isArray(existingEvts) && existingEvts.length > 0 ? existingEvts : []);
+        mergedUserMap.set(key, { ...existing, ...dbU, assignedEvents: finalEvts, assigned_events: finalEvts });
+      }
+    });
+
+    liveAllocations.forEach(alloc => {
+      const key = String(alloc.username || alloc.user_id || '').toLowerCase().trim();
+      if (key) {
+        const existing = mergedUserMap.get(key) || { username: alloc.username, role: 'event coordinator' };
+        let aEvts = alloc.assigned_events;
+        if (typeof aEvts === 'string') {
+          try { aEvts = JSON.parse(aEvts); } catch (_) { aEvts = [aEvts]; }
+        }
+        if (Array.isArray(aEvts) && aEvts.length > 0) {
+          mergedUserMap.set(key, { ...existing, assignedEvents: aEvts, assigned_events: aEvts });
+        }
+      }
+    });
+
+    const allUsers = Array.from(mergedUserMap.values());
+    saveUsersData(allUsers);
 
     const users = allUsers.map(u => {
       let assignedEvents = u.assigned_events || u.assignedEvents || (u.event_id || u.eventId ? [u.event_id || u.eventId] : []);
       if (typeof assignedEvents === 'string') {
         try { assignedEvents = JSON.parse(assignedEvents); } catch (_) { assignedEvents = [assignedEvents]; }
       }
+      
+      const uName = String(u.username || '').toLowerCase().trim();
+
+      // Check coordinators list fallback
       if (!Array.isArray(assignedEvents) || assignedEvents.length === 0) {
-        const uName = String(u.username || '').toLowerCase();
-        const matched = coordinators.find(c => 
-          c.name?.toLowerCase().includes(uName) || uName.includes(c.name?.toLowerCase().split(' ')[0])
-        );
-        if (matched && Array.isArray(matched.assignedEvents)) {
-          assignedEvents = matched.assignedEvents;
+        const matched = coordinators.find(c => {
+          const cName = String(c.name || '').toLowerCase().trim();
+          return cName === uName || (uName.length >= 3 && (cName.includes(uName) || uName.includes(cName.split(' ')[0])));
+        });
+        if (matched) {
+          let cEvents = matched.assigned_events || matched.assignedEvents;
+          if (typeof cEvents === 'string') {
+            try { cEvents = JSON.parse(cEvents); } catch (_) { cEvents = [cEvents]; }
+          }
+          if (Array.isArray(cEvents) && cEvents.length > 0) {
+            assignedEvents = cEvents;
+          }
         }
       }
 
@@ -882,7 +1017,8 @@ exports.getEventAllocations = async (req, res) => {
         id: u.id,
         username: u.username,
         role: u.role,
-        assignedEvents: Array.isArray(assignedEvents) ? assignedEvents : []
+        assignedEvents: Array.isArray(assignedEvents) ? assignedEvents : [],
+        assigned_events: Array.isArray(assignedEvents) ? assignedEvents : []
       };
     });
 
@@ -915,60 +1051,174 @@ exports.updateEventAllocation = async (req, res) => {
     }
 
     const eventsArray = Array.isArray(assignedEvents) ? assignedEvents : assignedEvents ? [assignedEvents] : [];
+    const cleanSearchName = String(username || '').trim();
 
+    // 1. Find user in Supabase by username first or ID
+    let targetDbId = null;
+    let targetUsername = cleanSearchName || null;
+    let dbUserMatch = null;
+
+    try {
+      if (cleanSearchName) {
+        const { data: dbMatchesName } = await supabase.from('users').select('*').ilike('username', cleanSearchName);
+        if (Array.isArray(dbMatchesName) && dbMatchesName.length > 0) {
+          dbUserMatch = dbMatchesName[0];
+        }
+      }
+      if (!dbUserMatch && userId) {
+        const { data: dbMatchesId } = await supabase.from('users').select('*').eq('id', userId);
+        if (Array.isArray(dbMatchesId) && dbMatchesId.length > 0) {
+          dbUserMatch = dbMatchesId[0];
+        }
+      }
+    } catch (e) {
+      console.warn('Supabase findUser error:', e.message);
+    }
+
+    if (dbUserMatch) {
+      targetDbId = dbUserMatch.id;
+      targetUsername = dbUserMatch.username;
+    }
+
+    // 2. Persist directly to Supabase live event_allocations table
+    try {
+      const allocPayload = {
+        username: String(targetUsername || username).trim(),
+        user_id: String(targetDbId || userId || ''),
+        assigned_events: eventsArray,
+        updated_at: new Date().toISOString()
+      };
+      
+      const { error: allocErr } = await supabase.from('event_allocations').upsert([allocPayload], { onConflict: 'username' });
+      if (allocErr) {
+        console.warn('Supabase event_allocations table upsert notice:', allocErr.message);
+        // Fallback string update if JSONB type mismatches
+        await supabase.from('event_allocations').upsert([{
+          ...allocPayload,
+          assigned_events: JSON.stringify(eventsArray)
+        }], { onConflict: 'username' });
+      }
+    } catch (allocEx) {
+      console.warn('Supabase event_allocations table exception:', allocEx.message);
+    }
+
+    // 3. Update Supabase users table directly
+    try {
+      if (targetDbId) {
+        const { error: sbErr } = await supabase.from('users').update({
+          assigned_events: eventsArray,
+          updated_at: new Date().toISOString()
+        }).eq('id', targetDbId);
+
+        if (sbErr) {
+          await supabase.from('users').update({
+            assigned_events: JSON.stringify(eventsArray),
+            updated_at: new Date().toISOString()
+          }).eq('id', targetDbId);
+        }
+      }
+      
+      if (targetUsername) {
+        const { error: sbErr, data: updatedRows } = await supabase.from('users').update({
+          assigned_events: eventsArray,
+          updated_at: new Date().toISOString()
+        }).ilike('username', targetUsername).select();
+
+        if (sbErr) {
+          await supabase.from('users').update({
+            assigned_events: JSON.stringify(eventsArray),
+            updated_at: new Date().toISOString()
+          }).ilike('username', targetUsername);
+        }
+
+        // If user does not exist in Supabase yet, insert it!
+        if ((!updatedRows || updatedRows.length === 0) && !targetDbId) {
+          const localUsers = getUsersData();
+          const localU = localUsers.find(u => String(u.username || '').toLowerCase() === targetUsername.toLowerCase());
+          await supabase.from('users').insert([{
+            username: targetUsername,
+            password: localU?.password || 'coordinator123',
+            role: localU?.role || 'event coordinator',
+            assigned_events: eventsArray,
+            is_active: true
+          }]);
+        }
+      }
+    } catch (e) {
+      console.warn('Supabase updateEventAllocation fallback:', e.message);
+    }
+
+    // 3. Update local users.json
     const users = getUsersData();
-    let userIndex = users.findIndex(u => (userId && u.id === parseInt(userId, 10)) || (username && u.username === username));
+    const cleanLowerName = String(targetUsername || username || '').toLowerCase().trim();
+    let userIndex = users.findIndex(u => 
+      (targetDbId && String(u.id) === String(targetDbId)) || 
+      (cleanLowerName && String(u.username || '').toLowerCase().trim() === cleanLowerName) ||
+      (userId && String(u.id) === String(userId))
+    );
 
     if (userIndex !== -1) {
+      if (targetDbId) users[userIndex].id = targetDbId;
+      if (targetUsername) users[userIndex].username = targetUsername;
       users[userIndex].assignedEvents = eventsArray;
+      users[userIndex].assigned_events = eventsArray;
       users[userIndex].eventId = eventsArray[0] || null;
+      users[userIndex].event_id = eventsArray[0] || null;
+      users[userIndex].updated_at = new Date().toISOString();
       saveUsersData(users);
-    } else if (username) {
+    } else {
       const newUser = {
-        id: userId ? parseInt(userId, 10) : Date.now(),
-        username,
+        id: targetDbId || (userId && Number.isInteger(Number(userId)) ? Number(userId) : Date.now()),
+        username: String(targetUsername || username).trim(),
         password: 'coordinator123',
-        role: 'Event Coordinator',
+        role: 'event coordinator',
         assignedEvents: eventsArray,
-        eventId: eventsArray[0] || null
+        assigned_events: eventsArray,
+        eventId: eventsArray[0] || null,
+        event_id: eventsArray[0] || null,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
       users.push(newUser);
       saveUsersData(users);
       userIndex = users.length - 1;
     }
 
-    // Also update Supabase users table if available
-    try {
-      if (userIndex !== -1) {
-        await supabase.from('users').update({
-          assigned_events: JSON.stringify(eventsArray),
-          event_id: eventsArray[0] || null
-        }).eq('id', users[userIndex].id);
-      }
-    } catch (e) {
-      console.warn('Supabase updateEventAllocation fallback:', e.message);
-    }
-
-    // Also sync with coordinators.json if coordinator username/name matches
+    // 4. Sync with coordinators.json & Supabase coordinators table if coordinator matches
     const coordinators = getCoordinatorsData();
-    const targetName = (userIndex !== -1 ? users[userIndex].username : username).toLowerCase();
     let updatedCoord = false;
     coordinators.forEach(c => {
-      if (c.name?.toLowerCase().includes(targetName) || targetName.includes(c.name?.toLowerCase().split(' ')[0])) {
+      const cName = String(c.name || '').toLowerCase().trim();
+      if (cName === cleanLowerName || (cleanLowerName.length >= 3 && (cName.includes(cleanLowerName) || cleanLowerName.includes(cName.split(' ')[0])))) {
         c.assignedEvents = eventsArray;
+        c.assigned_events = eventsArray;
+        c.updated_at = new Date().toISOString();
         updatedCoord = true;
       }
     });
     if (updatedCoord) {
       saveCoordinatorsData(coordinators);
+      try {
+        const matchedC = coordinators.find(c => {
+          const cName = String(c.name || '').toLowerCase().trim();
+          return cName === cleanLowerName || (cleanLowerName.length >= 3 && (cName.includes(cleanLowerName) || cleanLowerName.includes(cName.split(' ')[0])));
+        });
+        if (matchedC && matchedC.id) {
+          await supabase.from('coordinators').update({
+            assigned_events: eventsArray,
+            updated_at: new Date().toISOString()
+          }).eq('id', matchedC.id);
+        }
+      } catch (_) {}
     }
 
     res.json({
       success: true,
       message: 'Event allocation updated successfully!',
       data: {
-        userId: userIndex !== -1 ? users[userIndex].id : userId,
-        username: userIndex !== -1 ? users[userIndex].username : username,
+        userId: userIndex !== -1 ? users[userIndex].id : (targetDbId || userId),
+        username: userIndex !== -1 ? users[userIndex].username : (targetUsername || username),
         assignedEvents: eventsArray
       }
     });
@@ -1804,6 +2054,36 @@ exports.createCoordinator = async (req, res) => {
   coordinators.push(newCoordinator);
   saveCoordinatorsData(coordinators);
 
+  // Sync with matching login user account if it exists
+  try {
+    const users = getUsersData();
+    const cNameLower = newCoordinator.name.toLowerCase().trim();
+    let userUpdated = false;
+    users.forEach(u => {
+      const uName = String(u.username || '').toLowerCase().trim();
+      if (uName === cNameLower || (cNameLower.length >= 3 && (uName.includes(cNameLower) || cNameLower.includes(uName.split(' ')[0])))) {
+        u.assignedEvents = newCoordinator.assignedEvents;
+        u.assigned_events = newCoordinator.assignedEvents;
+        u.eventId = newCoordinator.assignedEvents[0] || null;
+        u.event_id = newCoordinator.assignedEvents[0] || null;
+        userUpdated = true;
+      }
+    });
+    if (userUpdated) {
+      saveUsersData(users);
+      const matchedU = users.find(u => {
+        const uName = String(u.username || '').toLowerCase().trim();
+        return uName === cNameLower || (cNameLower.length >= 3 && (uName.includes(cNameLower) || cNameLower.includes(uName.split(' ')[0])));
+      });
+      if (matchedU) {
+        await supabase.from('users').update({
+          assigned_events: newCoordinator.assignedEvents,
+          updated_at: new Date().toISOString()
+        }).ilike('username', matchedU.username);
+      }
+    }
+  } catch (_) {}
+
   res.status(201).json({ success: true, message: 'Student coordinator created successfully in live database', data: newCoordinator });
 };
 
@@ -1863,6 +2143,36 @@ exports.updateCoordinator = async (req, res) => {
     coordinators[index] = updatedCoordinator;
     saveCoordinatorsData(coordinators);
   }
+
+  // Sync with matching login user account if it exists
+  try {
+    const users = getUsersData();
+    const cNameLower = updatedCoordinator.name.toLowerCase().trim();
+    let userUpdated = false;
+    users.forEach(u => {
+      const uName = String(u.username || '').toLowerCase().trim();
+      if (uName === cNameLower || (cNameLower.length >= 3 && (uName.includes(cNameLower) || cNameLower.includes(uName.split(' ')[0])))) {
+        u.assignedEvents = updatedCoordinator.assignedEvents;
+        u.assigned_events = updatedCoordinator.assignedEvents;
+        u.eventId = updatedCoordinator.assignedEvents[0] || null;
+        u.event_id = updatedCoordinator.assignedEvents[0] || null;
+        userUpdated = true;
+      }
+    });
+    if (userUpdated) {
+      saveUsersData(users);
+      const matchedU = users.find(u => {
+        const uName = String(u.username || '').toLowerCase().trim();
+        return uName === cNameLower || (cNameLower.length >= 3 && (uName.includes(cNameLower) || cNameLower.includes(uName.split(' ')[0])));
+      });
+      if (matchedU) {
+        await supabase.from('users').update({
+          assigned_events: updatedCoordinator.assignedEvents,
+          updated_at: new Date().toISOString()
+        }).ilike('username', matchedU.username);
+      }
+    }
+  } catch (_) {}
 
   res.json({ success: true, message: 'Coordinator updated successfully in live database', data: updatedCoordinator });
 };
