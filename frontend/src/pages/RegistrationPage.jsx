@@ -40,7 +40,7 @@ import {
 } from 'react-icons/fa';
 import { submitRegistration, createPaymentOrder, verifyPaymentAndRegister, getCachedEvents, fetchEventsData, fetchRegistrationStatus, setCachedRegistrationStatus, uploadPaymentScreenshot } from '../services/api.js';
 import { getEventSticker } from '../data/eventStickers.js';
-import { findEvent, normalizeEvent } from '../utils/eventUtils.js';
+import { findEvent, normalizeEvent, normalizeEventId, EVENT_TEAM_SPECS } from '../utils/eventUtils.js';
 import paymentQrImg from '../assets/payment_upi_qr.jpg';
 import { QRCodeSVG } from 'qrcode.react';
 import PaymentScreenshotUpload from '../components/PaymentScreenshotUpload.jsx';
@@ -86,7 +86,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
     : (initialEvents.length > 0 ? normalizeEvent(initialEvents[0]) : null);
 
   const [eventsList, setEventsList] = useState(initialEvents);
-  const [selectedEvent, setSelectedEvent] = useState(initialSelected);
+  const [selectedEvent, setSelectedEvent] = useState(initialSelected ? normalizeEvent(initialSelected) : null);
 
   // Registration Closed Status State
   const [isRegClosed, setIsRegClosed] = useState(false);
@@ -185,8 +185,9 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
           if (eventId) {
             const found = findEvent(data, eventId);
             if (found) {
-              setSelectedEvent(found);
-              initTeamMembersForEvent(found);
+              const norm = normalizeEvent(found);
+              setSelectedEvent(norm);
+              initTeamMembersForEvent(norm);
             }
           }
         }
@@ -203,8 +204,9 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
     if (eventId && eventsList.length > 0) {
       const found = findEvent(eventsList, eventId);
       if (found) {
-        setSelectedEvent(found);
-        initTeamMembersForEvent(found);
+        const norm = normalizeEvent(found);
+        setSelectedEvent(norm);
+        initTeamMembersForEvent(norm);
       }
     }
   }, [eventId, eventsList]);
@@ -214,17 +216,17 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
   const [showSaveModal, setShowSaveModal] = useState(true);
 
   const formRef = useRef(null);
-  const isEsports = selectedEvent ? (selectedEvent.id === 'nontech-05' || selectedEvent.id?.startsWith('nontech-05')) : eventId === 'nontech-05';
-  const isTeam = Boolean(selectedEvent?.isTeam || selectedEvent?.is_team);
-  const minMembers = Number(selectedEvent?.minMembers || selectedEvent?.min_members || 1);
-  const maxMembers = Number(selectedEvent?.maxMembers || selectedEvent?.max_members || (isTeam ? 3 : 1));
-  const feeType = selectedEvent?.feeType || selectedEvent?.fee_type || 'per_head';
+  const normId = normalizeEventId(selectedEvent?.id || eventId || '');
+  const spec = EVENT_TEAM_SPECS[normId] || null;
+  const isEsports = normId === 'nontech-05';
+  const isTeam = Boolean(selectedEvent?.isTeam || selectedEvent?.is_team || spec?.isTeam);
+  const minMembers = Number(selectedEvent?.minMembers || selectedEvent?.min_members || spec?.minMembers || 1);
+  const maxMembers = Number(selectedEvent?.maxMembers || selectedEvent?.max_members || spec?.maxMembers || (isTeam ? 3 : 1));
+  const feeType = selectedEvent?.feeType || selectedEvent?.fee_type || spec?.feeType || 'per_head';
   const isFixedTeam = Boolean(
-    selectedEvent && (
-      feeType === 'per_squad' ||
-      feeType === 'per_team' ||
-      (isTeam && minMembers > 1 && minMembers === maxMembers)
-    )
+    feeType === 'per_squad' ||
+    feeType === 'per_team' ||
+    (isTeam && minMembers > 1 && minMembers === maxMembers)
   );
 
   const getValidGame = (g) => {
@@ -298,8 +300,9 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
       if (eventsList.length > 0) {
         const ev = findEvent(eventsList, eventId);
         if (ev) {
-          setSelectedEvent(ev);
-          initTeamMembersForEvent(ev);
+          const norm = normalizeEvent(ev);
+          setSelectedEvent(norm);
+          initTeamMembersForEvent(norm);
         }
       }
     } else {
@@ -360,48 +363,24 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
     });
   };
 
-  // Fee calculation using event data
+  // Fee calculation using event data - strictly proportional to number of participants (never FREE / 0)
   const calculateTotalFee = () => {
-    if (!selectedEvent) return { total: 0, formula: 'No event selected', count: 0, feePerHead: 0 };
+    const normEventId = normalizeEventId(selectedEvent?.id || eventId || '');
+    const eventSpec = EVENT_TEAM_SPECS[normEventId] || null;
 
-    if (selectedEvent.id === 'nontech-07' || (selectedEvent.feeType === 'per_team' && selectedEvent.id === 'nontech-07')) {
-      return {
-        total: 250,
-        formula: 'Flat ₹250 for 5-Member Team',
-        count: 5,
-        feePerHead: 50,
-      };
-    }
-
-    if (selectedEvent.id === 'nontech-05' || selectedEvent.feeType === 'per_squad') {
-      return {
-        total: 200,
-        formula: 'Flat ₹200 for 4-Player Squad',
-        count: 4,
-        feePerHead: 50,
-      };
-    }
-
-    if (selectedEvent.feeType === 'per_team' || selectedEvent.feeType === 'fixed') {
-      const flatTotal = selectedEvent.feePerHead || 250;
-      const memCount = selectedEvent.maxMembers || 5;
-      return {
-        total: flatTotal,
-        formula: `Flat ₹${flatTotal} for ${memCount}-Member Team`,
-        count: memCount,
-        feePerHead: Math.round(flatTotal / memCount),
-      };
-    }
-
-    const participantCount = 1 + (fields.teamMembers ? fields.teamMembers.length : 0);
-    const fee = selectedEvent.feePerHead || 0;
-    const total = participantCount * fee;
+    const participantCount = Math.max(1, 1 + (Array.isArray(fields.teamMembers) ? fields.teamMembers.length : 0));
+    const rawPerHead = Number(selectedEvent?.feePerHead || selectedEvent?.fee_per_head || 0);
+    const feePerHead = rawPerHead > 0 ? rawPerHead : (eventSpec?.feePerHead || (normEventId === 'tech-01' ? 100 : 50));
+    
+    // Amount is directly proportional to number of participants: count * feePerHead
+    const total = participantCount * feePerHead;
+    const formula = `₹${feePerHead} × ${participantCount} participant${participantCount > 1 ? 's' : ''}`;
 
     return {
       total,
-      formula: total === 0 ? 'FREE' : `₹${fee} × ${participantCount} participant${participantCount > 1 ? 's' : ''}`,
+      formula,
       count: participantCount,
-      feePerHead: fee,
+      feePerHead,
     };
   };
 
@@ -461,8 +440,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
 
   const addTeamMember = () => {
     if (!selectedEvent) return;
-    const max = Number(selectedEvent.maxMembers || selectedEvent.max_members || 3);
-    if (fields.teamMembers.length + 1 < max) {
+    if (fields.teamMembers.length + 1 < maxMembers) {
       setFields((prev) => ({
         ...prev,
         teamMembers: [...prev.teamMembers, createEmptyMember(prev.college)],
@@ -498,15 +476,16 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
       setShowEventModal(false);
       return;
     }
-    setSelectedEvent(ev);
-    initTeamMembersForEvent(ev);
-    if (ev.id === 'nontech-05') {
+    const norm = normalizeEvent(ev);
+    setSelectedEvent(norm);
+    initTeamMembersForEvent(norm);
+    if (norm.id === 'nontech-05') {
       setSelectedGame(getValidGame(selectedGame));
     }
     // Update hash without losing state
-    window.location.hash = `/register?event=${encodeURIComponent(ev.id)}`;
+    window.location.hash = `/register?event=${encodeURIComponent(norm.id)}`;
     setShowEventModal(false);
-    toast.success(`Event changed to "${ev.name}". All filled details preserved.`);
+    toast.success(`Event changed to "${norm.name}". All filled details preserved.`);
   };
 
   // Validation
@@ -551,10 +530,10 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
 
   const validateTeam = () => {
     const errs = {};
-    if (!selectedEvent || !selectedEvent.isTeam) return errs;
+    if (!selectedEvent || !isTeam) return errs;
 
     const hasExtraMembers = Array.isArray(fields.teamMembers) && fields.teamMembers.length > 0;
-    const isRequiredTeam = (selectedEvent.minMembers && selectedEvent.minMembers > 1) || hasExtraMembers;
+    const isRequiredTeam = (minMembers > 1) || hasExtraMembers;
 
     if (isRequiredTeam) {
       if (!fields.teamName?.trim()) {
@@ -565,11 +544,11 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
     }
 
     const totalCount = 1 + (Array.isArray(fields.teamMembers) ? fields.teamMembers.length : 0);
-    if (selectedEvent.minMembers && totalCount < selectedEvent.minMembers) {
-      if (selectedEvent.minMembers === selectedEvent.maxMembers) {
-        errs.teamMembers = `This event strictly requires exactly ${selectedEvent.minMembers} team members to be filled.`;
+    if (minMembers > 1 && totalCount < minMembers) {
+      if (minMembers === maxMembers) {
+        errs.teamMembers = `This event strictly requires exactly ${minMembers} team members to be filled.`;
       } else {
-        errs.teamMembers = `This event requires at least ${selectedEvent.minMembers} team members.`;
+        errs.teamMembers = `This event requires at least ${minMembers} team members.`;
       }
     }
 
@@ -634,7 +613,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
     }
     setErrors({});
 
-    if (selectedEvent?.isTeam || selectedEvent?.is_team) {
+    if (isTeam) {
       setStep('team');
     } else {
       setStep('review');
@@ -669,7 +648,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
   const handleFinalSubmit = async () => {
     // Validate everything once more
     const pErrors = validateParticipant();
-    const tErrors = selectedEvent?.isTeam ? validateTeam() : {};
+    const tErrors = isTeam ? validateTeam() : {};
     const allErrors = { ...pErrors, ...tErrors };
 
     if (Object.keys(allErrors).length > 0) {
@@ -685,67 +664,9 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
       ? { ...selectedEvent, name: `${selectedEvent.name} (${selectedGame})`, game: selectedGame }
       : selectedEvent;
 
-    const totalPayable = Number(feeInfo.total) || 0;
+    const totalPayable = Number(feeInfo.total) || 50;
 
-    // ── CASE A: FREE EVENT (totalFee === 0) ──
-    if (totalPayable === 0) {
-      try {
-        const response = await fetch(getApiUrl('/api/register'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            currentEvent: activeEventPayload,
-            fields,
-            totalFee: 0,
-            game: isEsports ? selectedGame : null
-          })
-        });
-        const data = await response.json();
-        if (data.success) {
-          toast.success('Congratulations, you are an Avenger now!', {
-            duration: 5000,
-            id: 'avenger-success-toast'
-          });
-          const resTicket = data.ticketData || {};
-          setTicketData({
-            ...resTicket,
-            registrationId: resTicket.ticketCode || data.registrationId || 'ELQ26-REG',
-            fullName: fields.fullName,
-            college: fields.college,
-            department: fields.department,
-            year: fields.year,
-            phone: fields.phone,
-            email: fields.email,
-            eventId: selectedEvent?.id,
-            eventName: activeEventPayload.name,
-            eventCategory: selectedEvent.category,
-            isTeam: selectedEvent.isTeam,
-            teamName: fields.teamName,
-            participantCount: 1 + (fields.teamMembers ? fields.teamMembers.length : 0),
-            totalFee: 0,
-            totalAmount: 0,
-            paymentStatus: 'FREE',
-            paymentMethod: 'FREE_EVENT',
-            game: isEsports ? selectedGame : null
-          });
-          setShowSaveModal(true);
-          setStep('success');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        } else {
-          toast.error('Registration failed: ' + (data.message || 'Server error'));
-          setServerError(data.message || 'Registration failed.');
-        }
-      } catch (err) {
-        console.error('Free registration error:', err);
-        toast.error('Server connection error. Please try again.');
-        setServerError('Network error while communicating with registration server.');
-      } finally {
-        setIsSubmitting(false);
-      }
-      return;
-    }
-
-    // ── CASE B: PAID EVENT → UPI QR PAYMENT FLOW ──
+    // ── MANDATORY PAYMENT FLOW (ALL REGISTRATIONS LEAD TO PAYMENT) ──
     const cleanUtr = (upiUtr || '').trim();
     if (!cleanUtr) {
       toast.error('Please enter the 12-digit UPI UTR / Transaction ID after completing payment.', {
@@ -812,7 +733,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
           id: 'avenger-success-toast'
         });
         const resTicket = data.ticketData || {};
-        const createdRegId = resTicket.ticketCode || data.registrationId || resTicket.id;
+        const createdRegId = resTicket.id || resTicket.ticketCode || data.registrationId;
 
         // Mandatory payment screenshot upload and Sharp compression via backend
         if (screenshotFile && createdRegId) {
@@ -841,7 +762,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
           eventId: selectedEvent?.id,
           eventName: activeEventPayload.name,
           eventCategory: selectedEvent.category,
-          isTeam: selectedEvent.isTeam,
+          isTeam: isTeam,
           teamName: fields.teamName,
           participantCount: 1 + (fields.teamMembers ? fields.teamMembers.length : 0),
           totalFee: totalPayable,
@@ -1384,7 +1305,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
             </div>
 
             {/* Step 2: Team Details (if team event) */}
-            {(selectedEvent?.isTeam || selectedEvent?.is_team) && (
+            {isTeam && (
               <>
                 <div
                   className={`reg-step-item ${step === 'team' ? 'active' : step === 'review' ? 'completed' : ''}`}
@@ -1413,7 +1334,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
             {/* Step 3 (or 2 for solo): Review & Confirm */}
             <div className={`reg-step-item ${step === 'review' ? 'active' : ''}`}>
               <span className="reg-step-num">
-                {(selectedEvent?.isTeam || selectedEvent?.is_team) ? '03' : '02'}
+                {isTeam ? '03' : '02'}
                 {step === 'review' && <span className="reg-step-pulse-ring" />}
               </span>
               <span className="reg-step-label">REVIEW & CONFIRM</span>
@@ -1502,7 +1423,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                     {/* Full Name */}
                     <div className={`form-group ${errors.fullName ? 'form-group-error' : ''}`} id="field-fullName">
                       <label className="form-label">
-                        Full Name {selectedEvent.isTeam ? '(Team Leader)' : ''} <span className="required-star">*</span>
+                        Full Name {isTeam ? '(Team Leader)' : ''} <span className="required-star">*</span>
                       </label>
                       <input
                         type="text"
@@ -1626,7 +1547,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                       <FaExchangeAlt style={{ marginRight: '0.4rem' }} /> CHANGE EVENT
                     </button>
                     <button type="submit" className="btn btn-primary">
-                      {(selectedEvent?.isTeam || selectedEvent?.is_team) ? (
+                      {isTeam ? (
                         <>
                           CONTINUE TO TEAM DETAILS <FaArrowRight style={{ marginLeft: '0.4rem' }} />
                         </>
@@ -1641,7 +1562,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
               )}
 
               {/* STEP 02: TEAM DETAILS (Only for team events) */}
-              {step === 'team' && (selectedEvent?.isTeam || selectedEvent?.is_team) && (
+              {step === 'team' && isTeam && (
                 <form onSubmit={handleProceedToReviewFromTeam} noValidate className="reg-card-panel">
                   <div className="panel-title-bar">
                     <div className="panel-title-left">
@@ -1653,15 +1574,15 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
 
                   <p className="team-intro-note">
                     Leader is automatically <strong>{fields.fullName || 'Lead Participant'}</strong>.
-                    {selectedEvent.minMembers === selectedEvent.maxMembers && selectedEvent.minMembers > 1
-                      ? ` This event strictly requires a team of exactly ${selectedEvent.maxMembers} members (Leader + ${selectedEvent.maxMembers - 1} members) — ₹${feeInfo.total} flat per team.`
-                      : ` Add squad members according to the competition rules (Maximum ${selectedEvent.maxMembers} total participants).`}
+                    {minMembers === maxMembers && minMembers > 1
+                      ? ` This event strictly requires a team of exactly ${maxMembers} members (Leader + ${maxMembers - 1} members) — ₹${feeInfo.total} total for ${maxMembers} participants.`
+                      : ` Add squad members according to the competition rules (Maximum ${maxMembers} total participants).`}
                   </p>
 
                   {/* Team Name */}
                   <div className={`form-group ${errors.teamName ? 'form-group-error' : ''}`} id="field-teamName" style={{ marginBottom: '1.5rem' }}>
                     <label className="form-label">
-                      Squad / Team Name {(selectedEvent.minMembers && selectedEvent.minMembers > 1) || fields.teamMembers.length > 0 ? (
+                      Squad / Team Name {(minMembers > 1) || fields.teamMembers.length > 0 ? (
                         <span className="required-star">*</span>
                       ) : (
                         <span style={{ fontSize: '0.78rem', color: '#9cb1a2', fontWeight: 400, marginLeft: '0.4rem' }}>(Optional for Solo)</span>
@@ -1872,9 +1793,9 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                     })}
 
                     {/* Add Member Button if limit not reached */}
-                    {!isFixedTeam && fields.teamMembers.length + 1 < (selectedEvent.maxMembers || selectedEvent.max_members || 3) && (
+                    {!isFixedTeam && fields.teamMembers.length + 1 < maxMembers && (
                       <button type="button" className="add-member-btn" onClick={addTeamMember}>
-                        + ADD TEAM MEMBER (+₹{selectedEvent.feePerHead || selectedEvent.fee_per_head || 50}) • UP TO {selectedEvent.maxMembers || selectedEvent.max_members || 3} PARTICIPANTS
+                        + ADD TEAM MEMBER (+₹{feeInfo.feePerHead}) • UP TO {maxMembers} PARTICIPANTS
                       </button>
                     )}
                   </div>
@@ -1921,7 +1842,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                   <div className="summary-line line-total">
                     <span className="line-label">TOTAL PAYABLE:</span>
                     <span className="line-val total-glow">
-                      {feeInfo.total === 0 ? 'FREE' : `₹${feeInfo.total}`}
+                      ₹{feeInfo.total}
                     </span>
                   </div>
                 </div>
@@ -1943,7 +1864,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
             <div className="review-panel-card">
               <div className="panel-title-bar">
                 <div className="panel-title-left">
-                  <span className="panel-step-tag">STEP {(selectedEvent.isTeam || selectedEvent.is_team) ? '03' : '02'}</span>
+                  <span className="panel-step-tag">STEP {isTeam ? '03' : '02'}</span>
                   <h3 className="panel-title">REVIEW REGISTRATION</h3>
                 </div>
                 <span className="review-check-pill">
@@ -2044,7 +1965,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                 </div>
 
                 {/* 3. Team Details (If Applicable) */}
-                {(selectedEvent.isTeam || selectedEvent.is_team) && (
+                {isTeam && (
                   <div className="review-section-box review-full-col">
                     <div className="review-sec-header">
                       <h4>SQUAD CONFIGURATION</h4>
@@ -2111,13 +2032,12 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                     <div className="fin-item fin-item-total">
                       <span className="fin-label">TOTAL PAYABLE AMOUNT</span>
                       <span className="fin-val fin-highlight">
-                        {feeInfo.total === 0 ? 'FREE' : `₹${feeInfo.total}`}
+                        ₹{feeInfo.total}
                       </span>
                     </div>
                   </div>
 
-                  {feeInfo.total > 0 ? (
-                    <div className="upi-qr-payment-card">
+                  <div className="upi-qr-payment-card">
                       <div className="upi-qr-header">
                         <div className="upi-qr-badge-left">
                           <FaQrcode style={{ color: '#00f5ff', fontSize: '1.05rem' }} />
@@ -2264,11 +2184,6 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                         </div>
                       </div>
                     </div>
-                  ) : (
-                    <p className="fin-desk-reminder">
-                      * Free event entry. Registration will be confirmed immediately.
-                    </p>
-                  )}
                 </div>
               </div>
 
@@ -2277,7 +2192,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setStep(selectedEvent.isTeam ? 'team' : 'participant')}
+                  onClick={() => setStep(isTeam ? 'team' : 'participant')}
                   disabled={isSubmitting}
                 >
                   <FaArrowLeft style={{ marginRight: '0.4rem' }} /> EDIT DETAILS
@@ -2287,15 +2202,13 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                   className="btn btn-primary btn-confirm-submit"
                   onClick={handleFinalSubmit}
                   disabled={isSubmitting}
-                  style={feeInfo.total > 0 ? { background: 'linear-gradient(135deg, #00f5ff 0%, #0284c7 100%)', boxShadow: '0 0 22px rgba(0, 245, 255, 0.45)', color: '#000', fontWeight: '800' } : {}}
+                  style={{ background: 'linear-gradient(135deg, #00f5ff 0%, #0284c7 100%)', boxShadow: '0 0 22px rgba(0, 245, 255, 0.45)', color: '#000', fontWeight: '800' }}
                 >
                   {isSubmitting ? (
                     <>
                       <FaSpinner className="spinner-rotate" style={{ marginRight: '0.5rem' }} />
                       CONFIRMING REGISTRATION...
                     </>
-                  ) : feeInfo.total === 0 ? (
-                    <>CONFIRM REGISTRATION (FREE) →</>
                   ) : (
                     <>
                       <FaCheckCircle style={{ marginRight: '0.45rem', fontSize: '1.05rem' }} />
@@ -2533,9 +2446,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                       <span className="ticket-val status-confirmed" style={{ color: '#10b981' }}>
                         <FaCheckCircle style={{ marginRight: '0.35rem', verticalAlign: '-1px' }} />
                         {ticketData.paymentStatus === 'PAID'
-                          ? 'PAID ONLINE (VERIFIED)'
-                          : ticketData.paymentStatus === 'FREE'
-                          ? 'FREE ENTRY'
+                          ? 'PAID ONLINE (SUBMITTED)'
                           : (ticketData.paymentStatus || 'CONFIRMED')}
                       </span>
                     </div>
@@ -2549,9 +2460,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                           ? 'UPI QR Scan'
                           : ticketData.paymentMethod === 'RAZORPAY'
                           ? 'Cards / Netbanking (Razorpay)'
-                          : ticketData.paymentMethod === 'FREE_EVENT'
-                          ? 'Free Entry'
-                          : (ticketData.paymentMethod || 'ONLINE')}
+                          : (ticketData.paymentMethod || 'UPI (ONLINE)')}
                       </span>
                     </div>
 
@@ -2569,8 +2478,7 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
                     <div className="ticket-info-item">
                       <span className="ticket-label">REGISTRATION FEE</span>
                       <span className="ticket-val fee-highlight">
-                        {ticketData.totalAmount === 0 ? 'FREE' : `₹${ticketData.totalAmount}`}
-                        {ticketData.paymentStatus === 'PAID' && ' (PAID)'}
+                        ₹{ticketData.totalAmount} (PAID)
                       </span>
                     </div>
                   </div>

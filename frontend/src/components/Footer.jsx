@@ -2,7 +2,20 @@ import { useState, useRef, useEffect } from 'react';
 import { FaBolt, FaGamepad, FaCompass, FaInstagram, FaRegEnvelope } from 'react-icons/fa';
 import logoImg from '../assets/logo.png';
 import staticEvents from '../data/events.js';
-import { getCachedEvents } from '../services/api.js';
+import { getCachedEvents, fetchEventsData } from '../services/api.js';
+
+const isExcludedEvent = (e) => {
+  if (!e) return true;
+  const name = String(e.name || '').toLowerCase();
+  const alias = String(e.alias || '').toLowerCase();
+  return (
+    e.id === 'tech-07' ||
+    name.includes('chart canvas') ||
+    alias.includes('chart canvas') ||
+    name.includes('roborange') ||
+    alias.includes('roborange')
+  );
+};
 
 export default function Footer({ onNavigate }) {
   const [clickCount, setClickCount] = useState(0);
@@ -10,16 +23,27 @@ export default function Footer({ onNavigate }) {
   const [eventList, setEventList] = useState(() => {
     const cached = getCachedEvents();
     if (Array.isArray(cached) && cached.length > 0) {
-      return cached.filter((e) => e.id !== 'tech-05' && e.id !== 'tech-07');
+      return cached.filter((e) => !isExcludedEvent(e));
     }
     return staticEvents;
   });
 
   useEffect(() => {
+    let isMounted = true;
     const cached = getCachedEvents();
     if (Array.isArray(cached) && cached.length > 0) {
-      setEventList(cached.filter((e) => e.id !== 'tech-05' && e.id !== 'tech-07'));
+      setEventList(cached.filter((e) => !isExcludedEvent(e)));
     }
+    fetchEventsData()
+      .then((events) => {
+        if (isMounted && Array.isArray(events) && events.length > 0) {
+          setEventList(events.filter((e) => !isExcludedEvent(e)));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleTripleClick = () => {
@@ -49,8 +73,8 @@ export default function Footer({ onNavigate }) {
     }
   };
 
-  const techEvents = eventList.filter((e) => e.category === 'technical' && e.id !== 'tech-05' && e.id !== 'tech-07');
-  const nonTechEvents = eventList.filter((e) => e.category === 'non-technical');
+  const techEvents = eventList.filter((e) => e.category === 'technical' && !isExcludedEvent(e));
+  const nonTechEvents = eventList.filter((e) => e.category === 'non-technical' && !isExcludedEvent(e));
 
   return (
     <footer className="footer">

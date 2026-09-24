@@ -147,7 +147,7 @@ export default function FinalCTA({ onRegister }) {
         <h2 className="cta-heading">{isRegClosed ? 'ONLINE REGISTRATIONS CLOSED' : 'ARE YOU READY?'}</h2>
         <p className="cta-sub">
           {isRegClosed 
-            ? 'Direct On-Site Spot Registrations accepted at the CAHCET Campus Desk on September 26, 2026.' 
+            ? 'Online registrations for ELOQUENCE 2026 are officially closed. Thank you for your interest!' 
             : 'Your challenge awaits.'}
         </p>
         <button className="btn btn-primary btn-large" onClick={onRegister}>

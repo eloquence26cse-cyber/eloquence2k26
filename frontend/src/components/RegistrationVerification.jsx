@@ -1,3 +1,4 @@
+
 import { useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import {
@@ -24,11 +25,15 @@ import {
   FaEye,
   FaBan,
   FaFilePdf,
-  FaImage
+  FaImage,
+  FaFileUpload,
+  FaCloudUploadAlt,
+  FaSpinner
 } from 'react-icons/fa';
 import { getApiUrl } from '../config/api';
 import defaultEvents from '../data/events.js';
 import PaymentScreenshotViewerModal from './PaymentScreenshotViewerModal.jsx';
+import { importPassPdf, saveImportedRegistrations } from '../services/api';
 
 export default function RegistrationVerification({
   registrationsList = [],
@@ -58,15 +63,69 @@ export default function RegistrationVerification({
   // Payment Screenshot Viewer Modal State
   const [viewerReg, setViewerReg] = useState(null);
 
+  // ── Import PDF Pass Modal State ───────────────────────────────────────
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFiles, setImportFiles] = useState([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importedPasses, setImportedPasses] = useState([]);
+  const [autoSaveImport, setAutoSaveImport] = useState(true);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isSavingBatch, setIsSavingBatch] = useState(false);
+
   // Helper to extract detailed team members from any record format
   const extractTeamMembers = (r) => {
     if (!r) return [];
-    const sanitizeMember = (m, idx) => {
+    const leadName = (r.fullName || r.full_name || r.leadName || '').trim().toLowerCase();
+
+    let rawList = [];
+    if (Array.isArray(r.teamMembers) && r.teamMembers.length > 0) {
+      rawList = r.teamMembers;
+    } else if (Array.isArray(r.team_members) && r.team_members.length > 0) {
+      rawList = r.team_members;
+    } else if (typeof r.team_members === 'string' && r.team_members.trim().startsWith('[')) {
+      try {
+        const parsed = JSON.parse(r.team_members);
+        if (Array.isArray(parsed) && parsed.length > 0) rawList = parsed;
+      } catch (e) {}
+    } else if (Array.isArray(r.registration_members) && r.registration_members.length > 0) {
+      rawList = r.registration_members;
+    } else if (Array.isArray(r.teamMembersList) && r.teamMembersList.length > 0) {
+      rawList = r.teamMembersList;
+    } else if (r.venue_snapshot && typeof r.venue_snapshot === 'string' && r.venue_snapshot.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(r.venue_snapshot);
+        if (Array.isArray(parsed.team_members) && parsed.team_members.length > 0) {
+          rawList = parsed.team_members;
+        }
+      } catch (e) {}
+    } else if (r.venueSnapshot && typeof r.venueSnapshot === 'object' && Array.isArray(r.venueSnapshot.team_members)) {
+      rawList = r.venueSnapshot.team_members;
+    }
+
+    if (!Array.isArray(rawList) || rawList.length === 0) return [];
+
+    // Filter out the team leader so the lead's name is NEVER recurring or duplicated as Member #2
+    const secondaryList = rawList.filter((m) => {
+      if (!m) return false;
+      const memberName = (typeof m === 'string' ? m : (m.fullName || m.name || m.member_name || '')).trim().toLowerCase();
+      if (!memberName) return false;
+      if (typeof m === 'object') {
+        if (m.role && String(m.role).toLowerCase().includes('lead')) return false;
+        if (m.isLeader || m.is_leader) return false;
+        if (Number(m.member_number || m.memberNumber) === 1) return false;
+      }
+      if (leadName && (memberName === leadName || memberName.includes(leadName) || leadName.includes(memberName))) {
+        return false;
+      }
+      return true;
+    });
+
+    return secondaryList.map((m, idx) => {
       if (typeof m === 'string') {
         return {
           memberNumber: idx + 2,
-          fullName: m,
-          name: m,
+          fullName: m.trim(),
+          name: m.trim(),
           phone: '',
           whatsapp: '',
           email: '',
@@ -75,9 +134,9 @@ export default function RegistrationVerification({
           year: r.year || ''
         };
       }
-      const memberName = m.fullName || m.name || m.member_name || `Member ${idx + 2}`;
+      const memberName = (m.fullName || m.name || m.member_name || `Member ${idx + 2}`).trim();
       return {
-        memberNumber: m.member_number || m.memberNumber || idx + 2,
+        memberNumber: idx + 2,
         fullName: memberName,
         name: memberName,
         phone: m.phone || m.whatsapp || '',
@@ -87,37 +146,7 @@ export default function RegistrationVerification({
         department: m.department || r.department || '',
         year: m.year || r.year || ''
       };
-    };
-
-    if (Array.isArray(r.teamMembers) && r.teamMembers.length > 0) {
-      return r.teamMembers.map(sanitizeMember);
-    }
-    if (Array.isArray(r.team_members) && r.team_members.length > 0) {
-      return r.team_members.map(sanitizeMember);
-    }
-    if (typeof r.team_members === 'string' && r.team_members.trim().startsWith('[')) {
-      try {
-        const parsed = JSON.parse(r.team_members);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map(sanitizeMember);
-        }
-      } catch (e) {}
-    }
-    if (Array.isArray(r.teamMembersList) && r.teamMembersList.length > 0) {
-      return r.teamMembersList.map(sanitizeMember);
-    }
-    if (Array.isArray(r.registration_members) && r.registration_members.length > 0) {
-      return r.registration_members.map(sanitizeMember);
-    }
-    if (r.venue_snapshot && typeof r.venue_snapshot === 'string' && r.venue_snapshot.trim().startsWith('{')) {
-      try {
-        const parsed = JSON.parse(r.venue_snapshot);
-        if (Array.isArray(parsed.team_members) && parsed.team_members.length > 0) {
-          return parsed.team_members.map(sanitizeMember);
-        }
-      } catch (e) {}
-    }
-    return [];
+    });
   };
 
   // Helper to extract UTR from a registration record
@@ -140,13 +169,22 @@ export default function RegistrationVerification({
     if (r.paymentScreenshotPath) return r.paymentScreenshotPath;
     if (r.screenshotPath) return r.screenshotPath;
     if (r.screenshot_path) return r.screenshot_path;
-    if (r.venue_snapshot) {
+    const snapRaw = r.venue_snapshot || r.venueSnapshot;
+    if (snapRaw) {
       try {
-        const snap = typeof r.venue_snapshot === 'string' ? JSON.parse(r.venue_snapshot) : r.venue_snapshot;
+        const snap = typeof snapRaw === 'string' ? JSON.parse(snapRaw) : snapRaw;
         if (snap) {
-          return snap.payment_screenshot_path || snap.paymentScreenshotPath || snap.screenshotPath || null;
+          if (snap.payment_screenshot_path) return snap.payment_screenshot_path;
+          if (snap.paymentScreenshotPath) return snap.paymentScreenshotPath;
+          if (snap.screenshotPath) return snap.screenshotPath;
+          if (snap.screenshot_path) return snap.screenshot_path;
         }
       } catch (e) {}
+    }
+    const tCode = r.ticketCode || r.ticket_code;
+    const isImported = r.imported_from_pdf || r.isImportedFromPdf || (snapRaw && (typeof snapRaw === 'string' ? snapRaw.includes('imported_from_pdf') : snapRaw.imported_from_pdf));
+    if (isImported && tCode) {
+      return `symposium/${tCode}/payment.webp`;
     }
     return null;
   };
@@ -759,6 +797,648 @@ export default function RegistrationVerification({
     toast.success(`Generated PDF for ${filteredRegistrations.length} verification records`);
   };
 
+  const escapeHtml = (str) => {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
+  const getTeamMembersList = (r) => {
+    if (Array.isArray(r.teamMembers) && r.teamMembers.length > 0) {
+      return r.teamMembers.map(m => typeof m === 'string' ? m : (m.fullName || m.name || ''));
+    }
+    if (Array.isArray(r.team_members) && r.team_members.length > 0) {
+      return r.team_members.map(m => typeof m === 'string' ? m : (m.fullName || m.name || ''));
+    }
+    if (Array.isArray(r.registration_members) && r.registration_members.length > 0) {
+      return r.registration_members.map(m => m.member_name || m.name || '');
+    }
+    if (r.venue_snapshot) {
+      try {
+        const snap = typeof r.venue_snapshot === 'string' ? JSON.parse(r.venue_snapshot) : r.venue_snapshot;
+        if (snap && Array.isArray(snap.team_members)) {
+          return snap.team_members.map(m => typeof m === 'string' ? m : (m.fullName || m.name || ''));
+        }
+      } catch (e) {}
+    }
+    return [];
+  };
+
+  const buildPassCardHtml = (r) => {
+    const ticketId = r.ticketCode || r.ticket_code || r.registrationId || r.id || 'ELQ26-REG';
+    const fullName = r.fullName || r.full_name || r.leadName || 'Anonymous';
+    const college = r.college || 'CAHCET';
+    const dept = r.department || 'CSE';
+    const year = r.year ? `(${r.year})` : '';
+    const phone = r.phone || 'N/A';
+    const email = r.email || 'N/A';
+    const { eventName, category } = getEventDetails(r);
+    const isTech = (category || '').toLowerCase() === 'technical';
+    const teamName = r.teamName || r.team_name || '';
+    const teamMembers = getTeamMembersList(r);
+    const memberCount = Number(r.membersCount || r.members_count || (1 + teamMembers.length));
+    const fee = Number(r.totalAmount || r.totalFee || r.total_fee || 0);
+    const utr = getRegUtr(r);
+    const status = getVerificationStatus(r);
+    const isVerified = status === 'verified';
+    const paymentMethod = r.paymentMethod || r.payment_method || 'UPI QR Scan';
+    const submittedAt = r.timestamp || (r.createdAt ? new Date(r.createdAt).toISOString().split('T')[0] : '2026-09-26');
+
+    let teamStr = 'Individual Entry';
+    if (teamName) {
+      teamStr = `${teamName} (${memberCount} Total)`;
+    } else if (memberCount > 1) {
+      teamStr = `Team of ${memberCount}`;
+    }
+
+    let teamMembersSection = '';
+    if (teamMembers.length > 0) {
+      teamMembersSection = `
+        <div class="ticket-info-item" style="grid-column: 1 / -1; margin-top: 4px; padding-top: 6px; border-top: 1px dashed rgba(57, 255, 136, 0.2);">
+          <span class="ticket-label">SQUAD MEMBERS</span>
+          <span class="ticket-val" style="font-size: 11.5px; line-height: 1.45;">
+            1. ${escapeHtml(fullName)} (Leader) &nbsp;&bull;&nbsp; 
+            ${teamMembers.map((m, i) => `${i + 2}. ${escapeHtml(m)}`).join(' &nbsp;&bull;&nbsp; ')}
+          </span>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="pass-card-container">
+        <div class="ticket-pass">
+          <div class="ticket-card-lanyard-notch"></div>
+
+          <div class="ticket-pass-main-horizontal">
+            <!-- Left Stub: Event branding, QR code, ID box -->
+            <div class="ticket-stub-left">
+              <div class="ticket-stub-brand">
+                <span class="ticket-fest-tag">ELOQUENCE'26 OFFICIAL PASS</span>
+                <h2 class="ticket-event-name">${escapeHtml(eventName)}</h2>
+                <span class="ticket-cat-badge ${isTech ? 'badge-tech' : 'badge-nontech'}">
+                  ⚡ ${escapeHtml((category || 'TECHNICAL').toUpperCase())} SHOWDOWN
+                </span>
+              </div>
+
+              <!-- QR Code Frame -->
+              <div class="ticket-qr-frame">
+                <span class="qr-corner qr-tl"></span>
+                <span class="qr-corner qr-tr"></span>
+                <span class="qr-corner qr-bl"></span>
+                <span class="qr-corner qr-br"></span>
+                <img 
+                  src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(ticketId)}&color=000000&bgcolor=ffffff" 
+                  alt="QR Code" 
+                  class="ticket-qr-image" 
+                />
+                <div class="ticket-qr-caption">
+                  <span>☵ SCAN FOR CHECK-IN</span>
+                </div>
+              </div>
+
+              <!-- ID Container -->
+              <div class="ticket-id-container">
+                <span class="ticket-code-label">OFFICIAL REGISTRATION ID</span>
+                <div class="ticket-code-value">${escapeHtml(ticketId)}</div>
+                <div class="ticket-copy-indicator">
+                  <span>■ AUTH-VERIFIED ID</span>
+                </div>
+              </div>
+
+              <p class="ticket-scan-hint">
+                ⚡ Present this QR at the venue entrance. Admin & coordinators will scan this for participation check-in.
+              </p>
+            </div>
+
+            <!-- Perforated Stub Divider -->
+            <div class="ticket-stub-divider">
+              <div class="stub-notch stub-notch-top"></div>
+              <div class="stub-line"></div>
+              <div class="stub-notch stub-notch-bottom"></div>
+            </div>
+
+            <!-- Right Body: Details & Security Header -->
+            <div class="ticket-body-right">
+              <div class="ticket-right-header">
+                <div class="ticket-right-meta">
+                  <span class="ticket-delegate-badge">OFFICIAL PARTICIPANT CREDENTIAL</span>
+                  <span class="ticket-host-text">CAHCET MELVISHARAM // SEPTEMBER 26, 2026</span>
+                </div>
+                <div class="ticket-card-shield">
+                  <span class="ticket-shield-icon">🛡️</span>
+                  <span class="ticket-shield-text">${isVerified ? 'VERIFIED' : 'CONFIRMED'}</span>
+                </div>
+              </div>
+
+              <!-- Details Grid (2 columns matching original pass) -->
+              <div class="ticket-pass-grid">
+                <div class="ticket-info-item">
+                  <span class="ticket-label">LEAD PARTICIPANT</span>
+                  <span class="ticket-val">${escapeHtml(fullName)}</span>
+                </div>
+
+                <div class="ticket-info-item">
+                  <span class="ticket-label">COLLEGE / INSTITUTION</span>
+                  <span class="ticket-val">${escapeHtml(college)}</span>
+                </div>
+
+                <div class="ticket-info-item">
+                  <span class="ticket-label">DEPARTMENT &amp; YEAR</span>
+                  <span class="ticket-val">${escapeHtml(dept)} ${escapeHtml(year)}</span>
+                </div>
+
+                <div class="ticket-info-item">
+                  <span class="ticket-label">CONTACT PHONE &amp; EMAIL</span>
+                  <span class="ticket-val">${escapeHtml(phone)} &bull; ${escapeHtml(email)}</span>
+                </div>
+
+                <div class="ticket-info-item">
+                  <span class="ticket-label">SQUAD / TEAM NAME</span>
+                  <span class="ticket-val">${escapeHtml(teamStr)}</span>
+                </div>
+
+                <div class="ticket-info-item">
+                  <span class="ticket-label">PAYMENT STATUS</span>
+                  <span class="ticket-val status-confirmed">
+                    ✔ ${isVerified ? 'PAID ONLINE (VERIFIED)' : 'PAID ONLINE (SUBMITTED)'}
+                  </span>
+                </div>
+
+                <div class="ticket-info-item">
+                  <span class="ticket-label">PAYMENT MODE</span>
+                  <span class="ticket-val mode-highlight">
+                    ${escapeHtml(paymentMethod)}
+                  </span>
+                </div>
+
+                <div class="ticket-info-item">
+                  <span class="ticket-label">UPI TRANSACTION REF / UTR</span>
+                  <span class="ticket-val utr-highlight">
+                    ${escapeHtml(utr || 'N/A')}
+                  </span>
+                </div>
+
+                <div class="ticket-info-item">
+                  <span class="ticket-label">REGISTRATION FEE</span>
+                  <span class="ticket-val fee-highlight">
+                    &#8377;${fee} (PAID)
+                  </span>
+                </div>
+              </div>
+
+              ${teamMembersSection}
+
+              <!-- Footer -->
+              <div class="ticket-pass-footer">
+                <span>📅 September 26, 2026</span>
+                <span>📍 CAHCET Campus, Melvisharam</span>
+                <span>🕒 Logged: ${escapeHtml(submittedAt)}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Security Strip -->
+          <div class="ticket-card-bottom-bar">
+            <span class="ticket-card-serial">AUTH-SEC // CAHCET-ELOQUENCE-2026 // ${escapeHtml(ticketId)}</span>
+            <span class="ticket-card-badge-pill">OFFICIAL PARTICIPANT CREDENTIAL</span>
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
+  // Pass Credentials Print/Preview Helper (matches official pass design)
+  const handlePrintPassCard = (singleReg = null) => {
+    const listToExport = singleReg ? [singleReg] : filteredRegistrations;
+    if (!listToExport || listToExport.length === 0) {
+      toast.error('No registration records to display pass card');
+      return;
+    }
+
+    const win = window.open('', '_blank');
+    if (!win) return toast.error('Please allow popups to view pass card');
+
+    const cardsHtml = listToExport.map((r, idx) => buildPassCardHtml(r, idx)).join('\n');
+    const title = singleReg
+      ? `Eloquence 2026 Pass - ${singleReg.ticketCode || singleReg.ticket_code || singleReg.id}`
+      : `Eloquence 2026 - Participant Passes (${listToExport.length})`;
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    @page { size: landscape; margin: 8mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #030805;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px 20px 60px;
+      min-height: 100vh;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
+    .no-print-bar {
+      position: sticky;
+      top: 10px;
+      z-index: 1000;
+      max-width: 860px;
+      margin: 0 auto 24px;
+      background: #0d1712;
+      border: 1px solid rgba(57, 255, 136, 0.45);
+      border-radius: 12px;
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+    }
+    .action-btn {
+      background: #10b981;
+      color: #042f1a;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+    .action-btn:hover { background: #34d399; }
+    .action-btn.btn-theme { background: #1e293b; color: #cbd5e1; border: 1px solid #374151; }
+    .action-btn.btn-close { background: #374151; color: #e5e7eb; }
+    .pass-card-container {
+      page-break-after: always;
+      break-after: page;
+      margin-bottom: 28px;
+      display: flex;
+      justify-content: center;
+    }
+    .pass-card-container:last-child {
+      page-break-after: avoid;
+      break-after: avoid;
+      margin-bottom: 0;
+    }
+    .ticket-pass {
+      background: linear-gradient(165deg, #09170e 0%, #040c07 45%, #020603 100%);
+      border: 2px solid rgba(57, 255, 136, 0.45);
+      border-radius: 18px;
+      padding: 24px 28px 18px;
+      text-align: left;
+      max-width: 860px;
+      width: 100%;
+      position: relative;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.95), 0 0 35px rgba(0, 168, 59, 0.16), inset 0 1px 0 rgba(57, 255, 136, 0.4);
+      overflow: hidden;
+    }
+    .ticket-card-lanyard-notch {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 52px;
+      height: 6px;
+      background: rgba(57, 255, 136, 0.25);
+      border-bottom-left-radius: 6px;
+      border-bottom-right-radius: 6px;
+      border: 1px solid rgba(57, 255, 136, 0.45);
+      border-top: none;
+    }
+    .ticket-pass-main-horizontal {
+      display: flex;
+      align-items: stretch;
+      gap: 22px;
+      position: relative;
+    }
+    .ticket-stub-left {
+      width: 250px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .ticket-stub-brand { width: 100%; margin-bottom: 12px; }
+    .ticket-fest-tag {
+      font-size: 9.5px;
+      font-weight: 800;
+      color: #8c9d91;
+      letter-spacing: 0.18em;
+      display: block;
+      margin-bottom: 3px;
+    }
+    .ticket-event-name {
+      font-size: 20px;
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: 0.04em;
+      margin: 0 0 5px;
+      line-height: 1.2;
+      text-transform: uppercase;
+    }
+    .ticket-cat-badge {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      padding: 3px 10px;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      color: #10b981;
+      background: rgba(57, 255, 136, 0.12);
+      border: 1px solid rgba(57, 255, 136, 0.4);
+      text-transform: uppercase;
+    }
+    .ticket-qr-frame {
+      position: relative;
+      width: 130px;
+      height: 130px;
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 22px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+    }
+    .qr-corner {
+      position: absolute;
+      width: 9px;
+      height: 9px;
+      border-color: #10b981;
+      pointer-events: none;
+    }
+    .qr-tl { top: -3px; left: -3px; border-top: 2px solid; border-left: 2px solid; }
+    .qr-tr { top: -3px; right: -3px; border-top: 2px solid; border-right: 2px solid; }
+    .qr-bl { bottom: -3px; left: -3px; border-bottom: 2px solid; border-left: 2px solid; }
+    .qr-br { bottom: -3px; right: -3px; border-bottom: 2px solid; border-right: 2px solid; }
+    .ticket-qr-image { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .ticket-qr-caption {
+      position: absolute;
+      bottom: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: #10b981;
+    }
+    .ticket-id-container { width: 100%; display: flex; flex-direction: column; align-items: center; margin-bottom: 8px; }
+    .ticket-code-label { font-size: 8.5px; color: #8c9d91; letter-spacing: 0.14em; margin-bottom: 4px; font-weight: 700; }
+    .ticket-code-value {
+      font-family: monospace;
+      font-size: 18px;
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: 0.12em;
+      background: rgba(0, 168, 59, 0.2);
+      border: 1.5px solid #10b981;
+      padding: 6px 12px;
+      border-radius: 6px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 0 16px rgba(57, 255, 136, 0.3);
+      margin-bottom: 4px;
+    }
+    .ticket-copy-indicator { font-size: 9px; color: #10b981; font-weight: 700; letter-spacing: 0.08em; }
+    .ticket-scan-hint { font-size: 8.5px; color: #8c9d91; line-height: 1.35; margin: 0; text-align: center; }
+    .ticket-stub-divider {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      flex-shrink: 0;
+    }
+    .ticket-stub-divider .stub-line { width: 1px; height: 100%; border-left: 2px dashed rgba(57, 255, 136, 0.35); }
+    .ticket-stub-divider .stub-notch {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #030805;
+      border: 2px solid rgba(57, 255, 136, 0.45);
+      position: absolute;
+      z-index: 2;
+    }
+    .ticket-stub-divider .stub-notch-top { top: -1.7rem; }
+    .ticket-stub-divider .stub-notch-bottom { bottom: -1.25rem; }
+    .ticket-body-right { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; }
+    .ticket-right-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(57, 255, 136, 0.22);
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+    }
+    .ticket-right-meta { flex: 1; }
+    .ticket-delegate-badge { font-size: 10px; font-weight: 800; color: #10b981; letter-spacing: 0.14em; display: block; }
+    .ticket-host-text { font-size: 9px; color: #8c9d91; letter-spacing: 0.08em; display: block; margin-top: 2px; }
+    .ticket-card-shield {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(57, 255, 136, 0.12);
+      border: 1px solid rgba(57, 255, 136, 0.4);
+      border-radius: 8px;
+      padding: 5px 10px;
+    }
+    .ticket-shield-text { font-size: 10px; font-weight: 900; letter-spacing: 0.12em; color: #10b981; }
+    .ticket-pass-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; margin-bottom: 14px; }
+    .ticket-info-item { display: flex; flex-direction: column; gap: 3px; }
+    .ticket-label { font-size: 8.5px; color: #8c9d91; letter-spacing: 0.12em; font-weight: 700; text-transform: uppercase; }
+    .ticket-val { font-size: 13px; font-weight: 700; color: #ffffff; word-break: break-word; }
+    .status-confirmed { color: #10b981; font-weight: 800; letter-spacing: 0.04em; }
+    .mode-highlight { color: #00f5ff; font-weight: 700; }
+    .utr-highlight { color: #00f5ff; font-family: monospace; font-size: 12px; font-weight: 700; }
+    .fee-highlight { font-size: 15px; font-weight: 900; color: #10b981; }
+    .ticket-pass-footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 10px;
+      color: #94a3b8;
+    }
+    .ticket-card-bottom-bar {
+      margin-top: 14px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(57, 255, 136, 0.2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 8.5px;
+    }
+    .ticket-card-serial { color: #8c9d91; letter-spacing: 0.1em; font-family: monospace; }
+    .ticket-card-badge-pill { color: #10b981; font-weight: 800; letter-spacing: 0.1em; }
+
+    body.theme-light { background: #ffffff !important; color: #0f172a !important; }
+    body.theme-light .ticket-pass { background: #ffffff !important; border-color: #0f172a !important; box-shadow: none !important; }
+    body.theme-light .ticket-stub-divider .stub-notch { background: #ffffff !important; border-color: #0f172a !important; }
+    body.theme-light .ticket-stub-divider .stub-line { border-left-color: #94a3b8 !important; }
+    body.theme-light .ticket-event-name,
+    body.theme-light .ticket-val,
+    body.theme-light .ticket-code-value { color: #0f172a !important; }
+    body.theme-light .ticket-code-value { background: #f1f5f9 !important; border-color: #0f172a !important; box-shadow: none !important; }
+    body.theme-light .ticket-fest-tag,
+    body.theme-light .ticket-label,
+    body.theme-light .ticket-code-label,
+    body.theme-light .ticket-scan-hint,
+    body.theme-light .ticket-host-text,
+    body.theme-light .ticket-card-serial,
+    body.theme-light .ticket-pass-footer { color: #475569 !important; }
+
+    @media print {
+      .no-print-bar { display: none !important; }
+      body { padding: 0 !important; background: #030805 !important; }
+      .pass-card-container { margin-bottom: 0 !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print-bar">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span style="font-size: 15px; font-weight: 900; color: #10b981; letter-spacing: 0.05em;">
+        ⚡ ELOQUENCE '26 OFFICIAL PASSES
+      </span>
+      <span style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid #059669; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 800;">
+        ${listToExport.length} ${listToExport.length === 1 ? 'Credential' : 'Credentials'}
+      </span>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <button class="action-btn" onclick="window.print()">
+        🖨️ Import / Save as PDF
+      </button>
+      <button class="action-btn btn-theme" onclick="document.body.classList.toggle('theme-light')">
+        🌓 Dark / Light
+      </button>
+      <button class="action-btn btn-close" onclick="window.close()">
+        ✕ Close
+      </button>
+    </div>
+  </div>
+
+  ${cardsHtml}
+
+  <script>
+    // Prompt print after QR codes start loading
+    window.onload = function() {
+      setTimeout(function() {
+        // Ready for printing
+      }, 500);
+    };
+  </script>
+</body>
+</html>`;
+
+    win.document.write(htmlContent);
+    win.document.close();
+    toast.success(`Generated official pass card preview for ${listToExport.length} participant(s)`);
+  };
+
+  // ── HANDLERS: IMPORT PDF PASSES AND SAVE DETAILS ────────────────────────
+  const handleOpenImportModal = () => {
+    setIsImportModalOpen(true);
+    setImportFiles([]);
+    setImportedPasses([]);
+  };
+
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const pdfs = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+      if (pdfs.length === 0) {
+        toast.error('Please upload valid PDF files');
+        return;
+      }
+      setImportFiles(pdfs);
+      handleExecuteImportPdf(pdfs);
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const pdfs = Array.from(e.target.files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+      if (pdfs.length === 0) {
+        toast.error('Please upload valid PDF files');
+        return;
+      }
+      setImportFiles(pdfs);
+      handleExecuteImportPdf(pdfs);
+    }
+  };
+
+  const handleExecuteImportPdf = async (filesToUpload = null) => {
+    const targetFiles = filesToUpload || importFiles;
+    if (!targetFiles || targetFiles.length === 0) {
+      toast.error('Please select at least one PDF pass file to import');
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const res = await importPassPdf(targetFiles, autoSaveImport, token);
+      if (res && res.success) {
+        setImportedPasses(res.registrations || []);
+        if (autoSaveImport) {
+          toast.success(`Successfully imported & saved ${res.savedCount || res.count} participant pass(es) to database!`, {
+            duration: 5000,
+            icon: '🎉'
+          });
+          if (onRefresh) onRefresh();
+        } else {
+          toast.success(`Parsed ${res.count} pass(es) from PDF. Click "Save to Database" to persist.`, {
+            duration: 4000
+          });
+        }
+      } else {
+        toast.error(res?.message || 'Failed to import PDF pass');
+      }
+    } catch (err) {
+      console.error('Import error:', err);
+      toast.error('Error importing PDF: ' + err.message);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleSaveImportedPasses = async () => {
+    if (!importedPasses || importedPasses.length === 0) return;
+    setIsSavingBatch(true);
+    try {
+      const res = await saveImportedRegistrations(importedPasses, token);
+      if (res && res.success) {
+        toast.success(`Saved ${res.savedCount || importedPasses.length} participant passes to database!`, { icon: '💾' });
+        setImportedPasses(prev => prev.map(p => ({ ...p, isSaved: true })));
+        if (onRefresh) onRefresh();
+      } else {
+        toast.error(res?.message || 'Failed to save registrations');
+      }
+    } catch (err) {
+      toast.error('Error saving to database: ' + err.message);
+    } finally {
+      setIsSavingBatch(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {/* ── KPI METRIC CARDS ───────────────────────────────────────────── */}
@@ -1009,6 +1689,30 @@ export default function RegistrationVerification({
             >
               <FaFilePdf size={11} />
               <span>Export PDF</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleOpenImportModal()}
+              style={{
+                padding: '0.55rem 1rem',
+                borderRadius: '8px',
+                border: isDark ? '1px solid #059669' : '1px solid #6ee7b7',
+                background: isDark ? '#064e3b' : '#ecfdf5',
+                color: isDark ? '#34d399' : '#047857',
+                fontSize: '0.85rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease',
+                boxShadow: isDark ? '0 2px 8px rgba(16, 185, 129, 0.25)' : '0 1px 3px rgba(16, 185, 129, 0.2)'
+              }}
+              title="Import official participant pass PDFs and save their details into the database"
+            >
+              <FaFileUpload size={12} />
+              <span>Import PDF</span>
             </button>
 
             <button
@@ -1486,6 +2190,7 @@ export default function RegistrationVerification({
                               <span>Screenshot</span>
                             </button>
                           )}
+
 
                           {/* 1. VERIFY PAYMENT BUTTON */}
                           {!isVerified ? (
@@ -2292,6 +2997,484 @@ export default function RegistrationVerification({
                 }}
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: IMPORT PASS PDF & SAVE DETAILS ──────────────────────── */}
+      {isImportModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.82)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '1rem'
+          }}
+          onClick={() => {
+            if (!isImporting && !isSavingBatch) setIsImportModalOpen(false);
+          }}
+        >
+          <div
+            style={{
+              background: isDark ? '#0d1712' : '#ffffff',
+              border: isDark ? '1px solid rgba(57, 255, 136, 0.4)' : '1px solid #10b981',
+              borderRadius: '16px',
+              padding: '1.75rem',
+              maxWidth: '820px',
+              width: '100%',
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              boxShadow: isDark
+                ? '0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 30px rgba(16, 185, 129, 0.15)'
+                : '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                borderBottom: isDark ? '1px solid #1f3a2c' : '1px solid #e2e8f0',
+                paddingBottom: '1rem',
+                marginBottom: '1.25rem'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div
+                  style={{
+                    background: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ecfdf5',
+                    border: '1px solid #10b981',
+                    borderRadius: '10px',
+                    padding: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#10b981'
+                  }}
+                >
+                  <FaFileUpload size={22} />
+                </div>
+                <div>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: '1.25rem',
+                      fontWeight: '800',
+                      color: isDark ? '#f9fafb' : '#0f172a',
+                      letterSpacing: '-0.3px'
+                    }}
+                  >
+                    Import Participant Passes (PDF)
+                  </h3>
+                  <div style={{ fontSize: '0.82rem', color: isDark ? '#9ca3af' : '#64748b', marginTop: '2px' }}>
+                    Upload official pass PDFs to automatically extract attendee credentials and save them directly to the database.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(false)}
+                disabled={isImporting || isSavingBatch}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: isDark ? '#9ca3af' : '#64748b',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  padding: '4px'
+                }}
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            {/* Dropzone Area */}
+            {importedPasses.length === 0 ? (
+              <div
+                onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                onDragLeave={() => setIsDragOver(false)}
+                onDrop={handleFileDrop}
+                onClick={() => document.getElementById('pass-pdf-file-input')?.click()}
+                style={{
+                  border: isDragOver
+                    ? '2px dashed #10b981'
+                    : isDark ? '2px dashed #2d4a3b' : '2px dashed #cbd5e1',
+                  background: isDragOver
+                    ? (isDark ? 'rgba(16, 185, 129, 0.12)' : '#ecfdf5')
+                    : (isDark ? 'rgba(13, 23, 18, 0.7)' : '#f8fafc'),
+                  borderRadius: '14px',
+                  padding: '2.5rem 1.5rem',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  marginBottom: '1.25rem'
+                }}
+              >
+                <input
+                  id="pass-pdf-file-input"
+                  type="file"
+                  accept=".pdf"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={handleFileSelect}
+                />
+                <div style={{ color: '#10b981', marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
+                  {isImporting ? <FaSpinner className="animate-spin" size={38} /> : <FaCloudUploadAlt size={44} />}
+                </div>
+                <div style={{ fontWeight: '700', fontSize: '1rem', color: isDark ? '#f9fafb' : '#0f172a', marginBottom: '4px' }}>
+                  {isImporting ? 'Extracting & Saving Registration Details...' : 'Click to Browse or Drag & Drop Pass PDF(s) Here'}
+                </div>
+                <div style={{ fontSize: '0.82rem', color: isDark ? '#9ca3af' : '#64748b', maxWidth: '420px', margin: '0 auto' }}>
+                  Select one or more official symposium pass PDFs (e.g. Slide Craft, Coding, E-Sports passes)
+                </div>
+
+                {importFiles.length > 0 && !isImporting && (
+                  <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
+                    {importFiles.map((f, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          background: isDark ? '#1f3a2c' : '#d1fae5',
+                          color: isDark ? '#34d399' : '#065f46',
+                          borderRadius: '20px',
+                          padding: '4px 12px',
+                          fontSize: '0.78rem',
+                          fontWeight: '600'
+                        }}
+                      >
+                        📄 {f.name} ({(f.size / 1024).toFixed(0)} KB)
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {/* Auto-Save Option */}
+            {importedPasses.length === 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '0.75rem 1rem',
+                  background: isDark ? '#112219' : '#f0fdf4',
+                  border: isDark ? '1px solid #1f3a2c' : '1px solid #bbf7d0',
+                  borderRadius: '10px',
+                  marginBottom: '1.25rem',
+                  fontSize: '0.85rem'
+                }}
+              >
+                <input
+                  type="checkbox"
+                  id="auto-save-pdf-checkbox"
+                  checked={autoSaveImport}
+                  onChange={(e) => setAutoSaveImport(e.target.checked)}
+                  style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#10b981' }}
+                />
+                <label htmlFor="auto-save-pdf-checkbox" style={{ cursor: 'pointer', color: isDark ? '#e2e8f0' : '#1e293b', fontWeight: '600' }}>
+                  Automatically save imported pass details directly to database
+                </label>
+              </div>
+            )}
+
+            {/* Extracted Details Results List */}
+            {importedPasses.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div
+                  style={{
+                    background: isDark ? '#064e3b' : '#ecfdf5',
+                    border: isDark ? '1px solid #059669' : '1px solid #a7f3d0',
+                    borderRadius: '10px',
+                    padding: '0.75rem 1rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '10px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FaCheckCircle style={{ color: '#10b981' }} size={16} />
+                    <span style={{ fontWeight: '700', fontSize: '0.9rem', color: isDark ? '#34d399' : '#047857' }}>
+                      Successfully parsed {importedPasses.length} participant pass(es)
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportedPasses([]);
+                        setImportFiles([]);
+                      }}
+                      style={{
+                        background: isDark ? '#1f2937' : '#ffffff',
+                        border: isDark ? '1px solid #374151' : '1px solid #cbd5e1',
+                        color: isDark ? '#e2e8f0' : '#334155',
+                        borderRadius: '6px',
+                        padding: '0.4rem 0.8rem',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      + Import Another PDF
+                    </button>
+                  </div>
+                </div>
+
+                {importedPasses.map((pass, pIdx) => {
+                  const isSaved = pass.isSaved !== false;
+                  return (
+                    <div
+                      key={pIdx}
+                      style={{
+                        background: isDark ? '#07100b' : '#f8fafc',
+                        border: isDark ? '1px solid #1f3a2c' : '1px solid #e2e8f0',
+                        borderLeft: '4px solid #10b981',
+                        borderRadius: '12px',
+                        padding: '1.25rem',
+                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
+                      }}
+                    >
+                      {/* Top Header of Parsed Card */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '10px',
+                          borderBottom: isDark ? '1px solid #162a20' : '1px solid #e2e8f0',
+                          paddingBottom: '0.75rem',
+                          marginBottom: '0.85rem'
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span
+                              style={{
+                                fontFamily: 'monospace',
+                                fontWeight: '900',
+                                fontSize: '1rem',
+                                color: '#10b981',
+                                letterSpacing: '0.5px'
+                              }}
+                            >
+                              {pass.ticketCode || pass.ticket_code}
+                            </span>
+                            <span
+                              style={{
+                                background: isDark ? '#1f3a2c' : '#ecfdf5',
+                                color: isDark ? '#34d399' : '#047857',
+                                fontSize: '0.72rem',
+                                fontWeight: '700',
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(16, 185, 129, 0.4)'
+                              }}
+                            >
+                              {(pass.category || 'TECHNICAL').toUpperCase()}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a', marginTop: '2px' }}>
+                            {pass.eventName || 'Symposium Event'}
+                          </div>
+                        </div>
+
+                        <div>
+                          {isSaved ? (
+                            <span
+                              style={{
+                                background: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ecfdf5',
+                                border: '1px solid #10b981',
+                                color: isDark ? '#34d399' : '#047857',
+                                padding: '4px 10px',
+                                borderRadius: '8px',
+                                fontSize: '0.78rem',
+                                fontWeight: '700',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px'
+                              }}
+                            >
+                              <FaCheckCircle size={12} /> Saved in Database
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                background: isDark ? '#451a03' : '#fef3c7',
+                                border: '1px solid #f59e0b',
+                                color: isDark ? '#fbbf24' : '#b45309',
+                                padding: '4px 10px',
+                                borderRadius: '8px',
+                                fontSize: '0.78rem',
+                                fontWeight: '700'
+                              }}
+                            >
+                              ⚠️ Ready to Save
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 2-Column Extracted Details Grid */}
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                          gap: '0.85rem',
+                          fontSize: '0.85rem'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#64748b', textTransform: 'uppercase' }}>
+                            Lead Participant
+                          </div>
+                          <div style={{ fontWeight: '700', color: isDark ? '#f8fafc' : '#0f172a' }}>
+                            {pass.fullName || pass.full_name}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#64748b', textTransform: 'uppercase' }}>
+                            College / Institution
+                          </div>
+                          <div style={{ color: isDark ? '#e2e8f0' : '#334155', fontWeight: '600' }}>
+                            {pass.college || 'N/A'}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#64748b', textTransform: 'uppercase' }}>
+                            Department & Year
+                          </div>
+                          <div style={{ color: isDark ? '#e2e8f0' : '#334155' }}>
+                            {pass.department} {pass.year ? `(${pass.year})` : ''}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#64748b', textTransform: 'uppercase' }}>
+                            Contact
+                          </div>
+                          <div style={{ color: isDark ? '#e2e8f0' : '#334155', fontFamily: 'monospace' }}>
+                            {pass.phone} {pass.email ? `• ${pass.email}` : ''}
+                          </div>
+                        </div>
+
+                        {pass.teamName && (
+                          <div style={{ gridColumn: '1 / -1' }}>
+                            <div style={{ fontSize: '0.72rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#64748b', textTransform: 'uppercase' }}>
+                              Squad / Team ({pass.membersCount} Members)
+                            </div>
+                            <div style={{ color: '#10b981', fontWeight: '700' }}>
+                              {pass.teamName}:{' '}
+                              <span style={{ color: isDark ? '#cbd5e1' : '#475569', fontWeight: '500' }}>
+                                {[
+                                  `${pass.fullName || pass.full_name} (Team Lead)`,
+                                  ...(Array.isArray(pass.teamMembers) ? pass.teamMembers : [])
+                                    .filter(m => {
+                                      const mName = (typeof m === 'string' ? m : (m.fullName || m.name || '')).trim().toLowerCase();
+                                      const lName = (pass.fullName || pass.full_name || '').trim().toLowerCase();
+                                      if (typeof m === 'object' && m.role && String(m.role).toLowerCase().includes('lead')) return false;
+                                      return mName && mName !== lName;
+                                    })
+                                    .map(m => (typeof m === 'string' ? m.trim() : `${m.name || m.fullName}${m.role ? ` (${m.role})` : ''}`))
+                                ].join(', ')}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div>
+                          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#64748b', textTransform: 'uppercase' }}>
+                            UPI UTR Ref
+                          </div>
+                          <div style={{ fontFamily: 'monospace', fontWeight: '700', color: '#10b981' }}>
+                            {pass.upiUtr || 'N/A'}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#64748b', textTransform: 'uppercase' }}>
+                            Registration Fee
+                          </div>
+                          <div style={{ fontWeight: '800', color: '#10b981' }}>
+                            ₹{pass.totalFee} ({pass.paymentStatus?.toUpperCase() || 'PAID'})
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Bottom Modal Actions */}
+            <div
+              style={{
+                marginTop: '1.5rem',
+                borderTop: isDark ? '1px solid #1f3a2c' : '1px solid #e2e8f0',
+                paddingTop: '1rem',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: '10px'
+              }}
+            >
+              {importedPasses.some(p => p.isSaved === false) && (
+                <button
+                  type="button"
+                  onClick={handleSaveImportedPasses}
+                  disabled={isSavingBatch}
+                  style={{
+                    padding: '0.6rem 1.25rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#10b981',
+                    color: '#022c1b',
+                    fontWeight: '800',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {isSavingBatch ? <FaSpinner className="animate-spin" /> : <FaCheckCircle />}
+                  <span>Save All to Database</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  if (onRefresh) onRefresh();
+                }}
+                style={{
+                  padding: '0.6rem 1.25rem',
+                  borderRadius: '8px',
+                  border: isDark ? '1px solid #374151' : '1px solid #cbd5e1',
+                  background: isDark ? '#1f2937' : '#f8fafc',
+                  color: isDark ? '#f8fafc' : '#0f172a',
+                  fontWeight: '700',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer'
+                }}
+              >
+                {importedPasses.length > 0 ? 'Done & Refresh Table' : 'Close'}
               </button>
             </div>
           </div>

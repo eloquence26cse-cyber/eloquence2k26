@@ -383,8 +383,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
                 is_verified: true,
                 isVerified: true,
                 verification_status: 'verified',
-                verificationStatus: 'verified',
-                attendance_status: 'verified'
+                verificationStatus: 'verified'
               };
             }
             return item;
@@ -471,12 +470,57 @@ export default function AdminDashboard({ token, user, onLogout }) {
 
   const getDetailedTeamMembers = (r) => {
     if (!r) return [];
-    const sanitizeMember = (m, idx) => {
+    const leadName = (r.fullName || r.full_name || r.leadName || '').trim().toLowerCase();
+
+    let rawList = [];
+    if (Array.isArray(r.teamMembers) && r.teamMembers.length > 0) {
+      rawList = r.teamMembers;
+    } else if (Array.isArray(r.team_members) && r.team_members.length > 0) {
+      rawList = r.team_members;
+    } else if (typeof r.team_members === 'string' && r.team_members.trim().startsWith('[')) {
+      try {
+        const parsed = JSON.parse(r.team_members);
+        if (Array.isArray(parsed) && parsed.length > 0) rawList = parsed;
+      } catch (e) {}
+    } else if (Array.isArray(r.registration_members) && r.registration_members.length > 0) {
+      rawList = r.registration_members;
+    } else if (Array.isArray(r.teamMembersList) && r.teamMembersList.length > 0) {
+      rawList = r.teamMembersList;
+    } else if (r.venue_snapshot && typeof r.venue_snapshot === 'string' && r.venue_snapshot.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(r.venue_snapshot);
+        if (Array.isArray(parsed.team_members) && parsed.team_members.length > 0) {
+          rawList = parsed.team_members;
+        }
+      } catch (e) {}
+    } else if (r.venueSnapshot && typeof r.venueSnapshot === 'object' && Array.isArray(r.venueSnapshot.team_members)) {
+      rawList = r.venueSnapshot.team_members;
+    }
+
+    if (!Array.isArray(rawList) || rawList.length === 0) return [];
+
+    // Filter out the team leader so the lead's name is NEVER recurring or duplicated as Member #2
+    const secondaryList = rawList.filter((m) => {
+      if (!m) return false;
+      const memberName = (typeof m === 'string' ? m : (m.fullName || m.name || m.member_name || '')).trim().toLowerCase();
+      if (!memberName) return false;
+      if (typeof m === 'object') {
+        if (m.role && String(m.role).toLowerCase().includes('lead')) return false;
+        if (m.isLeader || m.is_leader) return false;
+        if (Number(m.member_number || m.memberNumber) === 1) return false;
+      }
+      if (leadName && (memberName === leadName || memberName.includes(leadName) || leadName.includes(memberName))) {
+        return false;
+      }
+      return true;
+    });
+
+    return secondaryList.map((m, idx) => {
       if (typeof m === 'string') {
         return {
           memberNumber: idx + 2,
-          fullName: m,
-          name: m,
+          fullName: m.trim(),
+          name: m.trim(),
           phone: '',
           whatsapp: '',
           email: '',
@@ -485,9 +529,9 @@ export default function AdminDashboard({ token, user, onLogout }) {
           year: r.year || ''
         };
       }
-      const memberName = m.fullName || m.name || m.member_name || `Member ${idx + 2}`;
+      const memberName = (m.fullName || m.name || m.member_name || `Member ${idx + 2}`).trim();
       return {
-        memberNumber: m.member_number || m.memberNumber || idx + 2,
+        memberNumber: idx + 2,
         fullName: memberName,
         name: memberName,
         phone: m.phone || m.whatsapp || '',
@@ -497,37 +541,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
         department: m.department || r.department || '',
         year: m.year || r.year || ''
       };
-    };
-
-    if (Array.isArray(r.teamMembers) && r.teamMembers.length > 0) {
-      return r.teamMembers.map(sanitizeMember);
-    }
-    if (Array.isArray(r.team_members) && r.team_members.length > 0) {
-      return r.team_members.map(sanitizeMember);
-    }
-    if (typeof r.team_members === 'string' && r.team_members.trim().startsWith('[')) {
-      try {
-        const parsed = JSON.parse(r.team_members);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map(sanitizeMember);
-        }
-      } catch (e) {}
-    }
-    if (Array.isArray(r.registration_members) && r.registration_members.length > 0) {
-      return r.registration_members.map(sanitizeMember);
-    }
-    if (Array.isArray(r.teamMembersList) && r.teamMembersList.length > 0) {
-      return r.teamMembersList.map(sanitizeMember);
-    }
-    if (r.venue_snapshot && typeof r.venue_snapshot === 'string' && r.venue_snapshot.trim().startsWith('{')) {
-      try {
-        const parsed = JSON.parse(r.venue_snapshot);
-        if (Array.isArray(parsed.team_members) && parsed.team_members.length > 0) {
-          return parsed.team_members.map(sanitizeMember);
-        }
-      } catch (e) {}
-    }
-    return [];
+    });
   };
 
   const getTeamMembers = (r) => {

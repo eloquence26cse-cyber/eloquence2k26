@@ -6,6 +6,14 @@ const { broadcastRegistrationUpdate } = require('../config/websocket');
 const { saveBase64ImageIfPresent } = require('../utils/imageStorage');
 const JWT_SECRET = process.env.JWT_SECRET || 'eloquence2k26_default_secure_jwt_secret_key';
 
+let PDFParse;
+try {
+  const pdfParseModule = require('pdf-parse');
+  PDFParse = pdfParseModule.PDFParse || pdfParseModule;
+} catch (e) {
+  console.warn('[PDFParse Init Warning]:', e.message);
+}
+
 const usersFilePath = path.join(__dirname, '../data/users.json');
 const rolesFilePath = path.join(__dirname, '../data/roles.json');
 const eventsFilePath = path.join(__dirname, '../data/events.json');
@@ -178,19 +186,19 @@ const coordinatorToDb = (c) => {
 };
 
 const EVENT_TEAM_RULES = {
-  'tech-01': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members' },
-  'tech-02': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
-  'tech-03': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
-  'tech-04': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
-  'tech-05': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
-  'tech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
-  'nontech-01': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
-  'nontech-02': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members' },
-  'nontech-03': { isTeam: true, minMembers: 2, maxMembers: 4, teamSize: 'Max of 4 members' },
-  'nontech-04': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
-  'nontech-05': { isTeam: true, minMembers: 4, maxMembers: 4, teamSize: 'Only Squad Match (4 Players)' },
-  'nontech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual only' },
-  'nontech-07': { isTeam: true, minMembers: 5, maxMembers: 5, teamSize: 'Team of 5 Members' }
+  'tech-01': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members', feePerHead: 100, feeType: 'per_head' },
+  'tech-02': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2', feePerHead: 50, feeType: 'per_head' },
+  'tech-03': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2', feePerHead: 50, feeType: 'per_head' },
+  'tech-04': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2', feePerHead: 50, feeType: 'per_head' },
+  'tech-05': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual', feePerHead: 50, feeType: 'per_head' },
+  'tech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual', feePerHead: 50, feeType: 'per_head' },
+  'nontech-01': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual', feePerHead: 50, feeType: 'per_head' },
+  'nontech-02': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members', feePerHead: 50, feeType: 'per_head' },
+  'nontech-03': { isTeam: true, minMembers: 2, maxMembers: 4, teamSize: 'Max of 4 members', feePerHead: 50, feeType: 'per_head' },
+  'nontech-04': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual', feePerHead: 50, feeType: 'per_head' },
+  'nontech-05': { isTeam: true, minMembers: 4, maxMembers: 4, teamSize: 'Only Squad Match (4 Players)', feePerHead: 50, feeType: 'per_squad' },
+  'nontech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual only', feePerHead: 50, feeType: 'per_head' },
+  'nontech-07': { isTeam: true, minMembers: 5, maxMembers: 5, teamSize: 'Team of 5 Members', feePerHead: 50, feeType: 'per_team' }
 };
 
 const dbToEvent = (e) => {
@@ -211,8 +219,9 @@ const dbToEvent = (e) => {
   const minMembers = Number(e.min_members ?? e.minMembers ?? (rule ? rule.minMembers : 1));
   const maxMembers = Number(e.max_members ?? e.maxMembers ?? (rule ? rule.maxMembers : (isTeam ? 3 : 1)));
   const teamSize = e.team_size || e.teamSize || (rule ? rule.teamSize : (isTeam ? `Max of ${maxMembers} members` : 'Individual'));
-  const feePerHead = Number(e.fee_per_head ?? e.feePerHead ?? 0);
-  const feeType = e.fee_type || e.feeType || 'per_head';
+  const rawFee = Number(e.fee_per_head ?? e.feePerHead ?? 0);
+  const feePerHead = rawFee > 0 ? rawFee : (rule ? rule.feePerHead : (normId === 'tech-01' ? 100 : 50));
+  const feeType = e.fee_type || e.feeType || (rule ? rule.feeType : 'per_head');
 
   return {
     id: e.id,
@@ -227,7 +236,7 @@ const dbToEvent = (e) => {
     min_members: minMembers,
     maxMembers: maxMembers,
     max_members: maxMembers,
-    fee: e.fee,
+    fee: e.fee || (feeType === 'per_squad' || feeType === 'per_team' ? `₹${feePerHead * maxMembers} per team` : `₹${feePerHead} per head`),
     feePerHead: feePerHead,
     fee_per_head: feePerHead,
     feeType: feeType,
@@ -2456,12 +2465,13 @@ exports.verifyRegistration = async (req, res) => {
   const nowIso = new Date().toISOString();
   const noteReason = flagReason || reason || 'Flagged for UTR review';
 
-  const verifiedAt = isNowVerified ? nowIso : null;
-  const verifiedBy = isNowVerified ? operatorName : null;
+  const isUnadmit = action === 'unadmit' || req.body.attendance_status === 'pending' || req.body.attended === false;
+  const verifiedAt = isUnadmit ? null : (isNowVerified ? nowIso : null);
+  const verifiedBy = isUnadmit ? null : (isNowVerified ? operatorName : null);
   const flaggedAt = isNowFlagged ? nowIso : null;
   const flaggedBy = isNowFlagged ? operatorName : null;
   const finalFlagReason = isNowFlagged ? noteReason : null;
-  const targetAttendance = req.body.attendance_status || (action === 'unadmit' ? 'pending' : (isNowVerified ? 'verified' : 'pending'));
+  const targetAttendance = req.body.attendance_status || (isUnadmit ? 'pending' : (isNowVerified ? 'verified' : 'pending'));
 
   try {
     const updatePayload = {
@@ -2490,7 +2500,7 @@ exports.verifyRegistration = async (req, res) => {
         is_verified: isNowVerified,
         verified_at: verifiedAt,
         verified_by: verifiedBy,
-        attendance_status: isNowVerified ? 'verified' : 'pending'
+        attendance_status: targetAttendance
       };
       const fbQuery = isUUID
         ? supabase.from('registrations').update(fallbackPayload).eq('id', normId)
@@ -2580,11 +2590,26 @@ exports.getRegistrationScreenshot = async (req, res) => {
         if (!screenshotPath && reg.venue_snapshot) {
           try {
             const snap = typeof reg.venue_snapshot === 'string' ? JSON.parse(reg.venue_snapshot) : reg.venue_snapshot;
-            if (snap && snap.payment_screenshot_path) {
-              screenshotPath = snap.payment_screenshot_path;
+            if (snap && (snap.payment_screenshot_path || snap.paymentScreenshotPath)) {
+              screenshotPath = snap.payment_screenshot_path || snap.paymentScreenshotPath;
             }
           } catch (e) {}
         }
+        if (!screenshotPath && reg.ticket_code) {
+          const cleanTicket = String(reg.ticket_code).trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+          const localFile = path.join(__dirname, '../uploads/payment-screenshots', cleanTicket, 'payment.webp');
+          if (fs.existsSync(localFile)) {
+            screenshotPath = `symposium/${cleanTicket}/payment.webp`;
+          }
+        }
+      }
+    }
+
+    if (!screenshotPath && normId) {
+      const cleanTicket = normId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const localFile = path.join(__dirname, '../uploads/payment-screenshots', cleanTicket, 'payment.webp');
+      if (fs.existsSync(localFile)) {
+        screenshotPath = `symposium/${cleanTicket}/payment.webp`;
       }
     }
 
@@ -2672,13 +2697,17 @@ exports.updatePaymentStatus = async (req, res) => {
       is_verified: isNowVerified,
       verified_at: verifiedAt,
       verified_by: verifiedBy,
-      attendance_status: isNowVerified ? 'verified' : 'pending',
       verification_status: newVerificationStatus,
       is_flagged: isNowFlagged,
       flag_reason: isNowFlagged ? noteReason : null,
       flagged_at: flaggedAt,
       flagged_by: flaggedBy
     };
+    if (isReject) {
+      updatePayload.attendance_status = 'pending';
+    } else if (req.body.attendance_status) {
+      updatePayload.attendance_status = req.body.attendance_status;
+    }
 
     const query = isUUID
       ? supabase.from('registrations').update(updatePayload).eq('id', normId)
@@ -2692,9 +2721,13 @@ exports.updatePaymentStatus = async (req, res) => {
       const fbPayload = {
         is_verified: isNowVerified,
         verified_at: verifiedAt,
-        verified_by: verifiedBy,
-        attendance_status: isNowVerified ? 'verified' : 'pending'
+        verified_by: verifiedBy
       };
+      if (isReject) {
+        fbPayload.attendance_status = 'pending';
+      } else if (req.body.attendance_status) {
+        fbPayload.attendance_status = req.body.attendance_status;
+      }
       const fbQuery = isUUID
         ? supabase.from('registrations').update(fbPayload).eq('id', normId)
         : supabase.from('registrations').update(fbPayload).ilike('ticket_code', normId);
@@ -3048,4 +3081,501 @@ exports.updateRegistrationStatus = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to update registration status' });
   }
 };
+
+// ── HELPER: PARSE OFFICIAL PASS PDF TEXT ──────────────────────────────────
+function parsePassPdfText(rawText) {
+  if (!rawText) return null;
+
+  // 1. Ticket Code / Registration ID
+  let ticketCode = null;
+  const ticketMatch = rawText.match(/\b(ELQ26-[A-Z0-9]+-\d+)\b/i);
+  if (ticketMatch) {
+    ticketCode = ticketMatch[1].toUpperCase();
+  } else {
+    const spacedMatch = rawText.match(/E\s*L\s*Q\s*2\s*6\s*-\s*([A-Za-z0-9]+)\s*-\s*([0-9\s]+)/i);
+    if (spacedMatch) {
+      ticketCode = `ELQ26-${spacedMatch[1].replace(/\s+/g, '')}-${spacedMatch[2].replace(/\s+/g, '')}`.toUpperCase();
+    }
+  }
+
+  // 2. Event Name & Category Lookup
+  let eventsCatalog = [];
+  try {
+    if (fs.existsSync(eventsFilePath)) {
+      eventsCatalog = JSON.parse(fs.readFileSync(eventsFilePath, 'utf8') || '[]');
+    }
+  } catch (e) {}
+
+  const defaultKnownEvents = [
+    { id: 'tech-01', name: 'Slide Craft', alias: 'Slide Craft', category: 'technical' },
+    { id: 'tech-02', name: 'Crack The Code', alias: 'Crack the Code', category: 'technical' },
+    { id: 'tech-03', name: 'Web Prompting', alias: 'Web Prompting', category: 'technical' },
+    { id: 'tech-04', name: 'Tech Quiz', alias: 'Tech Quiz', category: 'technical' },
+    { id: 'tech-05', name: 'UI/UX Design', alias: 'UI/UX Design', category: 'technical' },
+    { id: 'nontech-01', name: 'Link Up', alias: 'Link Up', category: 'non-technical' },
+    { id: 'nontech-02', name: 'Hunt Zone', alias: 'Hunt Zone', category: 'non-technical' },
+    { id: 'nontech-03', name: 'Snap Reel', alias: 'Snap Reel', category: 'non-technical' },
+    { id: 'nontech-04', name: 'IPL Bidding', alias: 'IPL Bidding', category: 'non-technical' },
+    { id: 'nontech-05', name: 'Henna Mehndi', alias: 'Henna Mehndi', category: 'non-technical' },
+    { id: 'nontech-06', name: 'Checkmate', alias: 'Checkmate', category: 'non-technical' },
+    { id: 'special-01', name: 'E-Sports', alias: 'E-Sports', category: 'special' }
+  ];
+
+  const searchPool = (Array.isArray(eventsCatalog) && eventsCatalog.length > 0) ? eventsCatalog : defaultKnownEvents;
+
+  let eventObj = null;
+  for (const ev of searchPool) {
+    const evName = (ev.name || ev.alias || '').trim();
+    if (!evName) continue;
+    const re = new RegExp(`\\b${evName.replace(/[^a-zA-Z0-9]/g, '\\s*')}\\b`, 'i');
+    if (re.test(rawText)) {
+      eventObj = ev;
+      break;
+    }
+  }
+
+  let category = eventObj ? (eventObj.category || 'technical') : 'technical';
+  if (/TECHNICAL\s*SHOWDOWN/i.test(rawText)) category = 'technical';
+  else if (/NON-TECHNICAL/i.test(rawText)) category = 'non-technical';
+  else if (/E-SPORTS|GAMING/i.test(rawText)) category = 'special';
+
+  // 3. Contact Phone & Email
+  const phoneMatch = rawText.match(/\b([6-9]\d{9})\b/);
+  const phone = phoneMatch ? phoneMatch[1] : '';
+
+  const emailMatch = rawText.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
+  const email = emailMatch ? emailMatch[1] : '';
+
+  // 4. UPI Transaction Ref / UTR
+  let upiUtr = '';
+  const allNumbers = rawText.match(/\b(\d{12,18})\b/g) || [];
+  if (allNumbers.length > 0) {
+    upiUtr = allNumbers[0];
+  }
+
+  // 5. Registration Fee (explicitly with ₹ or INR or REGISTRATION FEE)
+  let totalFee = 0;
+  const rupeeFeeMatch = rawText.match(/₹\s*(\d+)/i) || rawText.match(/(?:REGISTRATION\s*FEE|FEE)[\s:]*[₹Rs\.]*\s*(\d+)/i);
+  if (rupeeFeeMatch) {
+    totalFee = Number(rupeeFeeMatch[1]);
+  }
+
+  // 6. Squad / Team Name & Total
+  let teamName = '';
+  let teamCount = 1;
+  const squadMatch = rawText.match(/(?:^|\n)\s*([A-Za-z0-9_\-\s]{2,30}?)\s*\(([0-9]+)\s*Total\)/);
+  if (squadMatch) {
+    teamName = squadMatch[1].trim();
+    teamCount = parseInt(squadMatch[2], 10) || 1;
+  }
+
+  // 7. Squad Members
+  let allSquadMembers = [];
+  const squadMembersBlock = rawText.match(/1\.\s*([\s\S]*?)(?:PAID ONLINE|PENDING|UPI QR|₹|PAYMENT|\n\n)/i);
+  if (squadMembersBlock) {
+    const rawList = squadMembersBlock[1];
+    const memberItems = rawList.split(/(?:^|\s+)[1-9]\.\s*/).map(s => s.trim()).filter(Boolean);
+    allSquadMembers = memberItems.map((mStr, idx) => {
+      let isLeader = /leader/i.test(mStr) || idx === 0;
+      let cleanName = mStr.replace(/\(Leader\)/i, '').replace(/[\n\r]+/g, ' ').trim();
+      return {
+        name: cleanName,
+        fullName: cleanName,
+        role: isLeader ? 'Leader' : `Member ${idx + 1}`
+      };
+    });
+  }
+
+  // 8. Lead Participant Full Name
+  let fullName = '';
+  if (allSquadMembers.length > 0) {
+    fullName = allSquadMembers[0].name;
+  } else {
+    const leadMatch = rawText.match(/CAHCET MELVISHARAM[^\n]*\n+([A-Za-z\s.]{2,30})[\t\n]/i);
+    if (leadMatch) fullName = leadMatch[1].trim();
+  }
+
+  // Secondary squad members (strictly excluding team leader so leader is not recurring)
+  const secondaryMembers = allSquadMembers.filter((m, idx) => {
+    if (m.role === 'Leader' || idx === 0) return false;
+    if (fullName && m.name.toLowerCase() === fullName.toLowerCase()) return false;
+    return true;
+  });
+
+  // 9. Department & Year
+  let department = '';
+  let year = '';
+  const deptYearMatch = rawText.match(/(?:^|\n)\s*([A-Za-z\s&,]+?(?:engineering|technology|science|arts|commerce|cse|it|ece|eee|mech|civil|bca|mca|bba)?)\s*\(([1-4](?:st|nd|rd|th)?\s*Year)\)/i);
+  if (deptYearMatch) {
+    department = deptYearMatch[1].replace(/[\n\r\t]+/g, ' ').trim();
+    year = deptYearMatch[2].trim();
+  }
+
+  // 10. College / Institution
+  let college = '';
+  if (fullName) {
+    const tabCollegeMatch = rawText.match(new RegExp(`${fullName}\\s*\\t([^\n]+(?:\\n[^\n]+)?)`, 'i'));
+    if (tabCollegeMatch) {
+      let colRaw = tabCollegeMatch[1].replace(/\n/g, ' ').trim();
+      colRaw = colRaw.split(/(?:Computer science|Department|Information technology|ECE|EEE|Mechanical)/i)[0].trim();
+      college = colRaw;
+    }
+  }
+  if (!college) {
+    const colFallback = rawText.match(/(Thanthai Periyar[^\n]*(?:\n[^\n]*vellore[^\n]*)?|[A-Za-z0-9\s.,\-_]{4,80}(?:college|institute of technology|university)[A-Za-z0-9\s.,\-_]*)/i);
+    if (colFallback) {
+      college = colFallback[1].replace(/[\n\r\t]+/g, ' ').trim();
+    }
+  }
+
+  // 11. Payment Status & Mode
+  let paymentStatus = 'paid';
+  if (/PAID ONLINE/i.test(rawText)) paymentStatus = 'paid';
+  else if (/VERIFIED/i.test(rawText)) paymentStatus = 'verified';
+  else if (/PENDING/i.test(rawText)) paymentStatus = 'pending';
+
+  let paymentMethod = 'UPI_QR';
+  if (/UPI QR/i.test(rawText)) paymentMethod = 'UPI_QR';
+  else if (/CASH|DESK/i.test(rawText)) paymentMethod = 'ON_SITE_DESK';
+
+  return {
+    ticketCode: ticketCode || `ELQ26-IMP-${Math.floor(10000 + Math.random() * 90000)}`,
+    ticket_code: ticketCode || `ELQ26-IMP-${Math.floor(10000 + Math.random() * 90000)}`,
+    eventId: eventObj ? eventObj.id : 'tech-01',
+    eventName: eventObj ? eventObj.name : 'Slide Craft',
+    category,
+    fullName: fullName || 'Participant',
+    full_name: fullName || 'Participant',
+    email,
+    phone,
+    college: college || 'C. Abdul Hakeem College of Engg & Tech',
+    department: department || 'Computer Science and Engineering',
+    year: year || '3rd Year',
+    teamName: teamName || (secondaryMembers.length > 0 ? `${fullName}'s Team` : null),
+    team_name: teamName || null,
+    membersCount: Math.max(teamCount, 1 + secondaryMembers.length),
+    members_count: Math.max(teamCount, 1 + secondaryMembers.length),
+    teamMembers: secondaryMembers,
+    allSquadMembers,
+    upiUtr,
+    upi_utr: upiUtr,
+    razorpayPaymentId: upiUtr,
+    razorpay_payment_id: upiUtr,
+    totalFee,
+    total_fee: totalFee,
+    totalAmount: totalFee,
+    paymentStatus,
+    payment_status: paymentStatus,
+    paymentMethod,
+    payment_method: paymentMethod,
+    verificationStatus: 'verified',
+    verification_status: 'verified',
+    isVerified: true,
+    is_verified: true,
+    isImportedFromPdf: true
+  };
+}
+
+// ── HELPER: SAVE SINGLE REGISTRATION TO SUPABASE ─────────────────────────
+async function saveSingleRegistrationToDb(reg) {
+  const normTicket = (reg.ticketCode || reg.ticket_code || '').trim();
+  const normUtr = (reg.upiUtr || reg.upi_utr || reg.razorpayPaymentId || reg.razorpay_payment_id || '').trim();
+  const leadFullName = (reg.fullName || reg.full_name || 'Participant').trim();
+  const leadFullNameLower = leadFullName.toLowerCase();
+
+  const eventId = reg.eventId || reg.event_id || 'tech-01';
+  try {
+    const { data: existingEv } = await supabase.from('events').select('id').eq('id', eventId).maybeSingle();
+    if (!existingEv) {
+      await supabase.from('events').insert([{
+        id: eventId,
+        number: '99',
+        name: reg.eventName || reg.event_name || 'Imported Event',
+        category: reg.category || 'technical',
+        team_size: reg.teamName ? 'Team' : 'Individual',
+        min_members: 1,
+        max_members: reg.membersCount || 1,
+        fee_type: 'per_head',
+        fee_per_head: 50
+      }]);
+    }
+  } catch (eEv) {
+    console.warn('[Import Event Ensure Warning]:', eEv.message);
+  }
+
+  let existingReg = null;
+  if (normTicket) {
+    const { data: byCode } = await supabase.from('registrations').select('id, ticket_code, venue_snapshot').ilike('ticket_code', normTicket).maybeSingle();
+    if (byCode) existingReg = byCode;
+  }
+  if (!existingReg && normUtr) {
+    const { data: byUtr } = await supabase.from('registrations').select('id, ticket_code, venue_snapshot').ilike('razorpay_payment_id', normUtr).maybeSingle();
+    if (byUtr) existingReg = byUtr;
+  }
+
+  const rawMembers = Array.isArray(reg.teamMembers) ? reg.teamMembers : (Array.isArray(reg.team_members) ? reg.team_members : []);
+  const secondaryMembers = rawMembers.filter((m, idx) => {
+    if (!m) return false;
+    const name = (typeof m === 'string' ? m : (m.fullName || m.name || m.member_name || '')).trim();
+    if (!name) return false;
+    if (typeof m === 'object') {
+      if (m.role && String(m.role).toLowerCase().includes('lead')) return false;
+      if (m.isLeader || m.is_leader) return false;
+      if (Number(m.member_number || m.memberNumber) === 1) return false;
+    }
+    if (leadFullNameLower && name.toLowerCase() === leadFullNameLower) return false;
+    return true;
+  });
+
+  const membersCount = Math.max(Number(reg.membersCount || reg.members_count || 1), 1 + secondaryMembers.length);
+
+  let screenshotPath = reg.payment_screenshot_path || reg.paymentScreenshotPath || reg.screenshotPath || reg.screenshot_path || null;
+  if (!screenshotPath && existingReg && existingReg.venue_snapshot) {
+    try {
+      const snap = typeof existingReg.venue_snapshot === 'string' ? JSON.parse(existingReg.venue_snapshot) : existingReg.venue_snapshot;
+      screenshotPath = snap.payment_screenshot_path || snap.paymentScreenshotPath || snap.screenshotPath || null;
+    } catch (e) {}
+  }
+
+  const venueSnapshot = JSON.stringify({
+    venue: reg.venue || 'CAHCET Campus',
+    payment_method: reg.paymentMethod || reg.payment_method || 'UPI_QR',
+    upi_utr: normUtr || null,
+    transaction_id: normUtr || null,
+    payment_screenshot_path: screenshotPath,
+    paymentScreenshotPath: screenshotPath,
+    team_name: reg.teamName || reg.team_name || null,
+    team_members: secondaryMembers.map(m => (typeof m === 'string' ? m.trim() : (m.fullName || m.name || m.member_name || '').trim())),
+    college: reg.college,
+    department: reg.department,
+    year: reg.year,
+    imported_from_pdf: true,
+    imported_at: new Date().toISOString()
+  });
+
+  const regPayload = {
+    event_id: eventId,
+    ticket_code: normTicket || `ELQ26-IMP-${Math.floor(10000 + Math.random() * 90000)}`,
+    team_name: reg.teamName || reg.team_name || null,
+    full_name: leadFullName,
+    email: reg.email || '',
+    phone: reg.phone || '',
+    college: reg.college || 'C. Abdul Hakeem College of Engg & Tech',
+    department: reg.department || 'CSE',
+    year: reg.year || '3rd Year',
+    members_count: membersCount,
+    total_fee: Number(reg.totalFee || reg.total_fee || reg.totalAmount || 0),
+    payment_status: reg.paymentStatus || reg.payment_status || 'paid',
+    registration_status: 'confirmed',
+    payment_method: reg.paymentMethod || reg.payment_method || 'UPI_QR',
+    razorpay_payment_id: normUtr || null,
+    upi_utr: normUtr || null,
+    verification_status: 'verified',
+    venue_snapshot: venueSnapshot,
+    timing_snapshot: reg.timing || '10:00 AM – 1:00 PM',
+    is_verified: true
+  };
+
+  let savedRecord = null;
+
+  if (existingReg) {
+    let { data: updData, error: updErr } = await supabase
+      .from('registrations')
+      .update(regPayload)
+      .eq('id', existingReg.id)
+      .select('*, registration_members(*)');
+
+    if (updErr && updErr.message && (updErr.message.includes('upi_utr') || updErr.message.includes('verification_status'))) {
+      delete regPayload.upi_utr;
+      delete regPayload.verification_status;
+      const fb = await supabase.from('registrations').update(regPayload).eq('id', existingReg.id).select('*, registration_members(*)');
+      updData = fb.data;
+    }
+    savedRecord = (Array.isArray(updData) && updData[0]) ? updData[0] : { ...regPayload, id: existingReg.id };
+
+    const membersToInsert = secondaryMembers.map((m, idx) => ({
+      registration_id: existingReg.id,
+      member_number: idx + 2,
+      member_name: (typeof m === 'string' ? m : (m.name || m.fullName || m.member_name || '')).trim()
+    }));
+    try {
+      await supabase.from('registration_members').delete().eq('registration_id', existingReg.id);
+      if (membersToInsert.length > 0) {
+        await supabase.from('registration_members').insert(membersToInsert);
+      }
+    } catch (eMem) {
+      console.warn('[Update registration_members Notice]:', eMem.message);
+    }
+  } else {
+    let { data: insData, error: insErr } = await supabase
+      .from('registrations')
+      .insert([regPayload])
+      .select('id, ticket_code, full_name, college');
+
+    if (insErr && insErr.message && (insErr.message.includes('upi_utr') || insErr.message.includes('verification_status'))) {
+      delete regPayload.upi_utr;
+      delete regPayload.verification_status;
+      const fb = await supabase.from('registrations').insert([regPayload]).select('id, ticket_code, full_name, college');
+      insData = fb.data;
+      insErr = fb.error;
+    }
+
+    if (insErr) {
+      throw new Error(`Failed to insert registration: ${insErr.message}`);
+    }
+
+    const newId = insData && insData[0] ? insData[0].id : null;
+    savedRecord = { ...regPayload, id: newId };
+
+    if (newId && secondaryMembers.length > 0) {
+      const membersToInsert = secondaryMembers.map((m, idx) => ({
+        registration_id: newId,
+        member_number: idx + 2,
+        member_name: (typeof m === 'string' ? m : (m.name || m.fullName || m.member_name || '')).trim()
+      }));
+      try {
+        await supabase.from('registration_members').insert(membersToInsert);
+      } catch (eMem) {
+        console.warn('[Insert registration_members Notice]:', eMem.message);
+      }
+    }
+  }
+
+  try {
+    broadcastRegistrationUpdate(existingReg ? 'UPDATE' : 'CREATE', savedRecord);
+  } catch (wsErr) {
+    console.warn('[WS Broadcast Notice]:', wsErr.message);
+  }
+
+  return savedRecord;
+}
+
+// ── CONTROLLER: IMPORT PDF PASS & SAVE ────────────────────────────────────
+exports.importPdfPass = async (req, res) => {
+  try {
+    if (!PDFParse) {
+      return res.status(500).json({ success: false, message: 'pdf-parse library is not loaded on server' });
+    }
+
+    const files = req.files || (req.file ? [req.file] : []);
+    if (!files || files.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please upload at least one PDF file' });
+    }
+
+    const autoSave = req.query.autoSave !== 'false' && req.body.autoSave !== 'false';
+    const parsedResults = [];
+
+    for (const file of files) {
+      try {
+        const parser = new PDFParse({ data: file.buffer });
+        const textResult = await parser.getText();
+
+        // Render screenshot of first page from the imported PDF
+        let screenshotBuffer = null;
+        try {
+          const screenshotRes = await parser.getScreenshot({ pageNumber: 1 });
+          if (screenshotRes && screenshotRes.pages && screenshotRes.pages[0] && screenshotRes.pages[0].data) {
+            screenshotBuffer = screenshotRes.pages[0].data;
+          }
+        } catch (ssErr) {
+          console.warn('[PDF Screenshot Render Notice]:', ssErr.message);
+        }
+
+        await parser.destroy();
+
+        const parsedData = parsePassPdfText(textResult.text || textResult);
+        if (parsedData) {
+          parsedData.originalFileName = file.originalname;
+
+          // If screenshotBuffer was rendered, save/upload as payment screenshot proof
+          if (screenshotBuffer && Buffer.isBuffer(screenshotBuffer)) {
+            try {
+              const { uploadScreenshot } = require('../utils/screenshotStorage');
+              const targetCode = parsedData.ticketCode || `ELQ26-IMP-${Date.now()}`;
+              const uploadRes = await uploadScreenshot(targetCode, screenshotBuffer);
+              if (uploadRes && uploadRes.path) {
+                parsedData.payment_screenshot_path = uploadRes.path;
+                parsedData.paymentScreenshotPath = uploadRes.path;
+              }
+            } catch (upErr) {
+              console.warn('[PDF Screenshot Upload Notice]:', upErr.message);
+            }
+          }
+
+          if (autoSave) {
+            try {
+              const saved = await saveSingleRegistrationToDb(parsedData);
+              parsedData.isSaved = true;
+              parsedData.savedId = saved.id;
+              parsedData.savedRecord = saved;
+            } catch (saveErr) {
+              console.error('[AutoSave Import Warning]:', saveErr.message);
+              parsedData.isSaved = false;
+              parsedData.saveError = saveErr.message;
+            }
+          }
+          parsedResults.push(parsedData);
+        }
+      } catch (fileErr) {
+        console.error(`Error parsing file ${file.originalname}:`, fileErr);
+      }
+    }
+
+    if (parsedResults.length === 0) {
+      return res.status(422).json({
+        success: false,
+        message: 'Could not extract valid registration data from the provided PDF(s). Please verify the PDF is an official pass.'
+      });
+    }
+
+    const savedCount = parsedResults.filter(p => p.isSaved).length;
+
+    return res.json({
+      success: true,
+      message: autoSave 
+        ? `Successfully imported and saved ${savedCount} participant pass(es) to database!`
+        : `Successfully parsed ${parsedResults.length} participant pass(es) from PDF.`,
+      count: parsedResults.length,
+      savedCount,
+      registrations: parsedResults
+    });
+  } catch (err) {
+    console.error('Error in importPdfPass:', err);
+    return res.status(500).json({ success: false, message: 'Failed to import PDF pass: ' + err.message });
+  }
+};
+
+// ── CONTROLLER: SAVE BATCH OF IMPORTED REGISTRATIONS ───────────────────────
+exports.saveImportedRegistrations = async (req, res) => {
+  try {
+    let list = req.body.registrations || (req.body.registration ? [req.body.registration] : []);
+    if (!Array.isArray(list) || list.length === 0) {
+      return res.status(400).json({ success: false, message: 'No registration data provided to save' });
+    }
+
+    const savedList = [];
+    const errors = [];
+
+    for (const item of list) {
+      try {
+        const saved = await saveSingleRegistrationToDb(item);
+        savedList.push(saved);
+      } catch (err) {
+        errors.push({ ticketCode: item.ticketCode, error: err.message });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Saved ${savedList.length} of ${list.length} registration(s) to database.`,
+      savedCount: savedList.length,
+      saved: savedList,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (err) {
+    console.error('Error in saveImportedRegistrations:', err);
+    return res.status(500).json({ success: false, message: 'Failed to save registrations: ' + err.message });
+  }
+};
+
 

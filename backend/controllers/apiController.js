@@ -229,19 +229,19 @@ const dbToHomepageTeam = (t) => {
 };
 
 const EVENT_TEAM_RULES = {
-  'tech-01': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members' },
-  'tech-02': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
-  'tech-03': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
-  'tech-04': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2' },
-  'tech-05': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
-  'tech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
-  'nontech-01': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
-  'nontech-02': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members' },
-  'nontech-03': { isTeam: true, minMembers: 2, maxMembers: 4, teamSize: 'Max of 4 members' },
-  'nontech-04': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual' },
-  'nontech-05': { isTeam: true, minMembers: 4, maxMembers: 4, teamSize: 'Only Squad Match (4 Players)' },
-  'nontech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual only' },
-  'nontech-07': { isTeam: true, minMembers: 5, maxMembers: 5, teamSize: 'Team of 5 Members' }
+  'tech-01': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members', feePerHead: 100, feeType: 'per_head' },
+  'tech-02': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2', feePerHead: 50, feeType: 'per_head' },
+  'tech-03': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2', feePerHead: 50, feeType: 'per_head' },
+  'tech-04': { isTeam: true, minMembers: 1, maxMembers: 2, teamSize: 'Individual / Team of 2', feePerHead: 50, feeType: 'per_head' },
+  'tech-05': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual', feePerHead: 50, feeType: 'per_head' },
+  'tech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual', feePerHead: 50, feeType: 'per_head' },
+  'nontech-01': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual', feePerHead: 50, feeType: 'per_head' },
+  'nontech-02': { isTeam: true, minMembers: 1, maxMembers: 3, teamSize: 'Max of 3 members', feePerHead: 50, feeType: 'per_head' },
+  'nontech-03': { isTeam: true, minMembers: 2, maxMembers: 4, teamSize: 'Max of 4 members', feePerHead: 50, feeType: 'per_head' },
+  'nontech-04': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual', feePerHead: 50, feeType: 'per_head' },
+  'nontech-05': { isTeam: true, minMembers: 4, maxMembers: 4, teamSize: 'Only Squad Match (4 Players)', feePerHead: 50, feeType: 'per_squad' },
+  'nontech-06': { isTeam: false, minMembers: 1, maxMembers: 1, teamSize: 'Individual only', feePerHead: 50, feeType: 'per_head' },
+  'nontech-07': { isTeam: true, minMembers: 5, maxMembers: 5, teamSize: 'Team of 5 Members', feePerHead: 50, feeType: 'per_team' }
 };
 
 const dbToEvent = (e) => {
@@ -262,8 +262,9 @@ const dbToEvent = (e) => {
   const minMembers = Number(e.min_members ?? e.minMembers ?? (rule ? rule.minMembers : 1));
   const maxMembers = Number(e.max_members ?? e.maxMembers ?? (rule ? rule.maxMembers : (isTeam ? 3 : 1)));
   const teamSize = e.team_size || e.teamSize || (rule ? rule.teamSize : (isTeam ? `Max of ${maxMembers} members` : 'Individual'));
-  const feePerHead = Number(e.fee_per_head ?? e.feePerHead ?? 0);
-  const feeType = e.fee_type || e.feeType || 'per_head';
+  const rawFee = Number(e.fee_per_head ?? e.feePerHead ?? 0);
+  const feePerHead = rawFee > 0 ? rawFee : (rule ? rule.feePerHead : (normId === 'tech-01' ? 100 : 50));
+  const feeType = e.fee_type || e.feeType || (rule ? rule.feeType : 'per_head');
 
   return {
     id: e.id,
@@ -278,7 +279,7 @@ const dbToEvent = (e) => {
     min_members: minMembers,
     maxMembers: maxMembers,
     max_members: maxMembers,
-    fee: e.fee,
+    fee: e.fee || (feeType === 'per_squad' || feeType === 'per_team' ? `₹${feePerHead * maxMembers} per team` : `₹${feePerHead} per head`),
     feePerHead: feePerHead,
     fee_per_head: feePerHead,
     feeType: feeType,
@@ -769,8 +770,6 @@ exports.registerEvent = async (req, res) => {
   if (typeof fields === 'string') {
     try { fields = JSON.parse(fields); } catch (e) {}
   }
-  const totalFee = req.body.totalFee;
-  const paymentMethod = req.body.paymentMethod || 'ON_SITE_DESK';
   const game = req.body.game;
   
   if (!currentEvent || !fields) {
@@ -839,10 +838,19 @@ exports.registerEvent = async (req, res) => {
       };
     });
 
-  const isPaid = Number(totalFee) > 0;
-  // Security enforcement: clients cannot self-verify paid events
-  const initialVerificationStatus = isPaid ? 'pending' : 'verified';
-  const initialPaymentStatus = isPaid ? 'PENDING' : 'FREE';
+  // Calculate fee strictly proportional to participants (never 0)
+  const normEventId = String((currentEvent && currentEvent.id) || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
+  const eventRule = EVENT_TEAM_RULES[normEventId] || null;
+  const canonicalPerHead = eventRule ? eventRule.feePerHead : (normEventId === 'tech-01' ? 100 : 50);
+  const totalMemberCount = 1 + validTeamMembers.length;
+  const expectedTotalFee = totalMemberCount * canonicalPerHead;
+  const clientFee = Number(req.body.totalFee) || 0;
+  const finalTotalFee = clientFee > 0 ? clientFee : expectedTotalFee;
+  const paymentMethod = 'UPI_QR';
+
+  // Security enforcement: All online web registrations require verification
+  const initialVerificationStatus = 'pending';
+  const initialPaymentStatus = 'PENDING';
 
   // Handle payment screenshot if file was uploaded or path passed
   let screenshotPath = (fields && (fields.paymentScreenshotPath || fields.payment_screenshot_path)) || req.body.paymentScreenshotPath || req.body.payment_screenshot_path || null;
@@ -865,7 +873,7 @@ exports.registerEvent = async (req, res) => {
 
   const paymentMeta = {
     venue: currentEvent.venue || 'CSE Department Labs',
-    payment_method: paymentMethod || (isPaid ? 'UPI_QR' : 'ON_SITE_DESK'),
+    payment_method: paymentMethod,
     game: game || null,
     upi_utr: cleanUtr || null,
     transaction_id: cleanUtr || null,
@@ -891,23 +899,24 @@ exports.registerEvent = async (req, res) => {
     email: fields.email,
     phone: fields.phone,
     year: fields.year,
-    isTeam: Boolean(currentEvent.isTeam),
+    isTeam: Boolean(currentEvent.isTeam || currentEvent.is_team || (eventRule && eventRule.isTeam)),
     teamName: fields.teamName || null,
-    membersCount: 1 + validTeamMembers.length,
+    membersCount: totalMemberCount,
     teamMembersList: validTeamMembers.map(m => m.fullName || m.name),
     teamMembers: validTeamMembers,
-    totalFee: Number(totalFee) || 0,
-    totalAmount: Number(totalFee) || 0,
+    totalFee: finalTotalFee,
+    totalAmount: finalTotalFee,
     paymentStatus: initialPaymentStatus,
     payment_status: initialPaymentStatus,
-    paymentMethod: paymentMethod || (isPaid ? 'UPI_QR' : 'ON_SITE_DESK'),
+    paymentMethod: paymentMethod,
+    payment_method: paymentMethod,
     upiUtr: cleanUtr || null,
     transactionId: cleanUtr || null,
     paymentScreenshotPath: screenshotPath,
     payment_screenshot_path: screenshotPath,
     verificationStatus: initialVerificationStatus,
     verification_status: initialVerificationStatus,
-    isVerified: !isPaid,
+    isVerified: false,
     isFlagged: false,
     registrationStatus: 'active',
     venue: currentEvent.venue,
@@ -942,19 +951,20 @@ exports.registerEvent = async (req, res) => {
       full_name: fields.fullName,
       email: fields.email,
       phone: fields.phone,
-      college: fields.college,
-      department: fields.department,
-      year: fields.year,
+      college: fields.college || 'C. Abdul Hakeem College of Engg & Tech',
+      department: fields.department || 'CSE',
+      year: fields.year || '3rd Year',
       members_count: 1 + validTeamMembers.length,
-      total_fee: totalFee,
+      total_fee: finalTotalFee,
       payment_status: initialPaymentStatus,
       registration_status: 'confirmed',
-      payment_method: paymentMethod || (isPaid ? 'UPI_QR' : 'ON_SITE_DESK'),
+      payment_method: paymentMethod || 'UPI_QR',
       razorpay_payment_id: cleanUtr || null,
+      upi_utr: cleanUtr || null,
+      verification_status: initialVerificationStatus,
       venue_snapshot: venueSnapshotStr,
       timing_snapshot: currentEvent.timing || '10:00 AM – 1:00 PM',
-      is_verified: !isPaid,
-      payment_screenshot_path: screenshotPath
+      is_verified: false
     };
 
     let { data: regData, error: regError } = await supabase
@@ -964,26 +974,49 @@ exports.registerEvent = async (req, res) => {
 
     if (regError) {
       console.warn('[Supabase Registration Warning]:', regError.message);
-      // If payment_screenshot_path column is not yet migrated in Supabase, fallback without it
-      if (regError.message && regError.message.includes('payment_screenshot_path')) {
+      // If error occurs due to columns not in table schema, fallback without them
+      if (regError.message && (regError.message.includes('upi_utr') || regError.message.includes('verification_status') || regError.message.includes('payment_screenshot_path'))) {
+        delete regInsertPayload.upi_utr;
+        delete regInsertPayload.verification_status;
         delete regInsertPayload.payment_screenshot_path;
         const fbRes = await supabase.from('registrations').insert([regInsertPayload]).select('id');
         regData = fbRes.data;
+        regError = fbRes.error;
       }
     }
 
-    if (regData && regData[0] && validTeamMembers.length > 0) {
-      const dbRegId = regData[0].id;
-      const membersToInsert = validTeamMembers.map((member, idx) => ({
-        registration_id: dbRegId,
-        member_number: idx + 2,
-        member_name: (typeof member === 'string' ? member : (member.name || '')).trim()
-      }));
+    if (regError) {
+      console.error('[Supabase Registration Error]:', regError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error saving registration: ' + (regError.message || 'Unknown database error')
+      });
+    }
 
-      await supabase.from('registration_members').insert(membersToInsert);
+    if (regData && regData[0]) {
+      const dbRegId = regData[0].id;
+      ticketData.id = dbRegId;
+      ticketData.registrationId = dbRegId;
+
+      if (validTeamMembers.length > 0) {
+        const membersToInsert = validTeamMembers.map((member, idx) => ({
+          registration_id: dbRegId,
+          member_number: idx + 2,
+          member_name: (typeof member === 'string' ? member : (member.name || '')).trim()
+        }));
+
+        const { error: membersErr } = await supabase.from('registration_members').insert(membersToInsert);
+        if (membersErr) {
+          console.warn('[Registration Members Insert Warning]:', membersErr.message);
+        }
+      }
     }
   } catch (dbEx) {
-    console.warn('[Supabase Registration Exception]:', dbEx.message);
+    console.error('[Supabase Registration Exception]:', dbEx);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to record registration: ' + (dbEx.message || 'Internal server error')
+    });
   }
 
   // 3. Broadcast real-time event via WebSocket to all dashboards and clients
@@ -1020,14 +1053,35 @@ exports.uploadPaymentScreenshot = async (req, res) => {
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normId);
 
   try {
-    const query = isUUID
-      ? supabase.from('registrations').select('*').eq('id', normId).maybeSingle()
-      : supabase.from('registrations').select('*').ilike('ticket_code', normId).maybeSingle();
+    let reg = null;
+    // Retry up to 3 attempts with brief backoff to prevent read-after-write replication delay
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const query = isUUID
+        ? supabase.from('registrations').select('*').eq('id', normId).maybeSingle()
+        : supabase.from('registrations').select('*').ilike('ticket_code', normId).maybeSingle();
 
-    const { data: reg, error: fetchErr } = await query;
-    if (fetchErr) {
-      console.warn('Fetch registration for screenshot upload warning:', fetchErr.message);
+      const { data, error: fetchErr } = await query;
+      if (fetchErr) {
+        console.warn('Fetch registration for screenshot upload warning:', fetchErr.message);
+      }
+      if (data) {
+        reg = data;
+        break;
+      }
+      // Alternate lookup if UUID check was ambiguous
+      const altQuery = isUUID
+        ? supabase.from('registrations').select('*').ilike('ticket_code', normId).maybeSingle()
+        : supabase.from('registrations').select('*').eq('id', normId).maybeSingle();
+      const { data: altData } = await altQuery;
+      if (altData) {
+        reg = altData;
+        break;
+      }
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 300));
+      }
     }
+
     if (!reg) {
       return res.status(404).json({ success: false, message: 'Registration not found' });
     }
@@ -1261,7 +1315,7 @@ const enrichRegistrationRecord = (r) => {
 
   copy.is_verified = Boolean(copy.is_verified || copy.isVerified || copy.attendance_status === 'verified' || copy.attendanceStatus === 'verified');
   copy.isVerified = copy.is_verified;
-  copy.attendance_status = copy.is_verified ? 'verified' : (copy.attendance_status || copy.attendanceStatus || 'pending');
+  copy.attendance_status = copy.attendance_status || copy.attendanceStatus || 'pending';
   copy.attendanceStatus = copy.attendance_status;
   copy.verified_at = copy.verified_at || copy.verifiedAt || null;
   copy.verifiedAt = copy.verified_at;

@@ -156,33 +156,15 @@ export function normalizeEvent(e) {
     isTeam = Number(e.maxMembers || e.max_members) > 1;
   } else if (e.teamSize || e.team_size) {
     const s = String(e.teamSize || e.team_size).toLowerCase();
-    isTeam = s.includes('team') || s.includes('squad') || s.includes('max');
+    isTeam = s.includes('team') || s.includes('squad') || s.includes('max') || s.includes('2') || s.includes('3') || s.includes('4') || s.includes('5');
   }
 
   // Resolve maxMembers
-  let maxMembers = 1;
-  if (spec) {
-    maxMembers = spec.maxMembers;
-  } else if (e.maxMembers !== undefined) {
-    maxMembers = Number(e.maxMembers) || 1;
-  } else if (e.max_members !== undefined) {
-    maxMembers = Number(e.max_members) || 1;
-  } else if (isTeam) {
-    maxMembers = 4;
-  }
-
-  // Resolve minMembers
-  let minMembers = 1;
-  if (spec) {
-    minMembers = spec.minMembers;
-  } else if (e.minMembers !== undefined) {
-    minMembers = Number(e.minMembers) || 1;
-  } else if (e.min_members !== undefined) {
-    minMembers = Number(e.min_members) || 1;
-  }
+  let maxMembers = spec?.maxMembers || Number(e.maxMembers || e.max_members) || (isTeam ? 3 : 1);
+  let minMembers = spec?.minMembers || Number(e.minMembers || e.min_members) || 1;
 
   // Resolve teamSize display text
-  let teamSize = spec?.teamSize || e.teamSize || e.team_size;
+  let teamSize = (e.teamSize && String(e.teamSize).trim()) || (e.team_size && String(e.team_size).trim()) || spec?.teamSize;
   if (!teamSize) {
     if (!isTeam || maxMembers <= 1) {
       teamSize = 'Individual';
@@ -193,8 +175,9 @@ export function normalizeEvent(e) {
     }
   }
 
-  // Resolve fees
-  const feePerHead = Number(e.feePerHead ?? e.fee_per_head ?? spec?.feePerHead ?? 50);
+  // Resolve fees - NEVER allow feePerHead to be 0 or falsy
+  const candidateFee = Number(e.feePerHead || e.fee_per_head || 0);
+  const feePerHead = candidateFee > 0 ? candidateFee : (spec?.feePerHead || (normId === 'tech-01' ? 100 : 50));
   const feeType = e.feeType || e.fee_type || spec?.feeType || 'per_head';
 
   return {

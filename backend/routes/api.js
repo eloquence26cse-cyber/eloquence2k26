@@ -9,6 +9,11 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
+const uploadPdf = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 } // 25MB limit for PDF pass documents
+});
+
 const handleMultipartOrJson = (req, res, next) => {
   if (req.is('multipart/form-data')) {
     upload.fields([{ name: 'screenshot', maxCount: 1 }, { name: 'paymentScreenshot', maxCount: 1 }])(req, res, (err) => {
@@ -34,6 +39,8 @@ router.post('/payment/create-order', apiController.createPaymentOrder);
 router.post('/payment/verify-and-register', apiController.verifyPaymentAndRegister);
 router.get('/registrations', apiController.getRegistrations);
 router.get('/registrations/:id', apiController.getRegistrationById);
+router.post('/registrations/import-pdf', uploadPdf.any(), adminController.importPdfPass);
+router.post('/registrations/save-imported', adminController.saveImportedRegistrations);
 router.get('/events', apiController.getPublicEvents);
 router.get('/registration-status', apiController.getRegistrationStatus);
 
@@ -104,6 +111,8 @@ router.patch('/admin/registrations/:id/verification', adminController.verifyToke
 router.post('/admin/registrations/:id/verification', adminController.verifyToken, adminController.verifyRegistration);
 router.patch('/admin/registrations/:id/flag', adminController.verifyToken, adminController.verifyRegistration);
 router.post('/admin/registrations/:id/flag', adminController.verifyToken, adminController.verifyRegistration);
+router.post('/admin/registrations/import-pdf', adminController.verifyToken, uploadPdf.any(), adminController.importPdfPass);
+router.post('/admin/registrations/save-imported', adminController.verifyToken, adminController.saveImportedRegistrations);
 
 // ── Admin Homepage Coordinator Team Management ───────────────────────────
 router.get('/admin/homepage-coordinators', adminController.verifyToken, adminController.getHomepageCoordinators);
