@@ -7,7 +7,8 @@
     "created_at": "2026-09-16T10:16:15.224679+00:00",
     "updated_at": "2026-09-18T09:22:26.63+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1788337851969,
@@ -17,7 +18,8 @@
     "created_at": "2026-09-16T10:16:15.641779+00:00",
     "updated_at": "2026-09-16T16:17:36.104+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1788757889166,
@@ -27,7 +29,8 @@
     "created_at": "2026-09-16T10:16:15.316747+00:00",
     "updated_at": "2026-09-16T10:16:15.316747+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1788800000000,
@@ -37,7 +40,8 @@
     "created_at": "2026-09-16T10:16:15.395813+00:00",
     "updated_at": "2026-09-16T10:16:15.395813+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1789207567321,
@@ -47,7 +51,8 @@
     "created_at": "2026-09-16T10:16:15.574737+00:00",
     "updated_at": "2026-09-17T08:54:47.426+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1789211005481,
@@ -57,7 +62,8 @@
     "created_at": "2026-09-16T10:16:15.705391+00:00",
     "updated_at": "2026-09-17T08:54:56.692+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1789212394030,
@@ -67,7 +73,8 @@
     "created_at": "2026-09-16T10:16:15.472958+00:00",
     "updated_at": "2026-09-17T08:55:07.549+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1789462542706,
@@ -77,7 +84,8 @@
     "created_at": "2026-09-16T10:16:15.806316+00:00",
     "updated_at": "2026-09-16T10:16:15.806316+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1789486239500,
@@ -87,7 +95,8 @@
     "created_at": "2026-09-16T10:16:15.885133+00:00",
     "updated_at": "2026-09-16T10:16:15.885133+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1789567160199,
@@ -97,7 +106,8 @@
     "created_at": "2026-09-16T13:59:20.725229+00:00",
     "updated_at": "2026-09-16T13:59:20.725229+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1789617208332,
@@ -107,7 +117,8 @@
     "created_at": "2026-09-17T03:53:28.561214+00:00",
     "updated_at": "2026-09-17T03:53:28.561214+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1789626317268,
@@ -117,7 +128,8 @@
     "created_at": "2026-09-17T06:25:17.324659+00:00",
     "updated_at": "2026-09-17T06:25:29.007+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1789639530836,
@@ -127,17 +139,19 @@
     "created_at": "2026-09-17T10:05:30.919476+00:00",
     "updated_at": "2026-09-17T10:05:30.919476+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
-    "id": 1789639593150,
-    "username": "sam",
-    "password": "shomensam",
+    "id": 1790308748670,
+    "username": "Sam",
+    "password": "admin",
     "role": "lead coordinator",
-    "created_at": "2026-09-25T04:04:21.671606+00:00",
-    "updated_at": "2026-09-25T04:04:21.671606+00:00",
+    "created_at": "2026-09-25T03:59:09.009357+00:00",
+    "updated_at": "2026-09-25T04:31:48.796+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1789640679414,
@@ -146,8 +160,13 @@
     "role": "event coordinator",
     "created_at": "2026-09-17T10:24:39.475808+00:00",
     "updated_at": "2026-09-24T03:58:45.45+00:00",
-    "assigned_events": [],
-    "is_active": true
+    "assigned_events": [
+      "tech-05"
+    ],
+    "is_active": true,
+    "assignedEvents": [
+      "tech-05"
+    ]
   },
   {
     "id": 1789724090689,
@@ -157,7 +176,8 @@
     "created_at": "2026-09-21T09:22:35.2752+00:00",
     "updated_at": "2026-09-21T09:22:35.2752+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1789968969970,
@@ -169,7 +189,10 @@
     "assigned_events": [
       "tech-05"
     ],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": [
+      "tech-05"
+    ]
   },
   {
     "id": 1790000537480,
@@ -179,7 +202,8 @@
     "created_at": "2026-09-21T14:22:17.693962+00:00",
     "updated_at": "2026-09-21T14:22:17.693962+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1790059061673,
@@ -189,7 +213,8 @@
     "created_at": "2026-09-22T06:37:41.774953+00:00",
     "updated_at": "2026-09-24T13:26:12.45+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1790222459907,
@@ -201,17 +226,10 @@
     "assigned_events": [
       "tech-02"
     ],
-    "is_active": true
-  },
-  {
-    "id": 1790308748670,
-    "username": "Sam",
-    "password": "admin",
-    "role": "lead coordinator",
-    "created_at": "2026-09-25T03:59:09.009357+00:00",
-    "updated_at": "2026-09-25T04:31:48.796+00:00",
-    "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": [
+      "tech-02"
+    ]
   },
   {
     "id": 1790310763687,
@@ -221,7 +239,8 @@
     "created_at": "2026-09-25T04:32:43.9561+00:00",
     "updated_at": "2026-09-25T04:32:43.9561+00:00",
     "assigned_events": [],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": []
   },
   {
     "id": 1790311436555,
@@ -233,7 +252,10 @@
     "assigned_events": [
       "tech-04"
     ],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": [
+      "tech-04"
+    ]
   },
   {
     "id": 1790311458032,
@@ -245,7 +267,10 @@
     "assigned_events": [
       "tech-03"
     ],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": [
+      "tech-03"
+    ]
   },
   {
     "id": 1790311508592,
@@ -257,7 +282,10 @@
     "assigned_events": [
       "nontech-01"
     ],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": [
+      "nontech-01"
+    ]
   },
   {
     "id": 1790311520594,
@@ -269,7 +297,10 @@
     "assigned_events": [
       "nontech-02"
     ],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": [
+      "nontech-02"
+    ]
   },
   {
     "id": 1790311535735,
@@ -281,7 +312,10 @@
     "assigned_events": [
       "nontech-03"
     ],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": [
+      "nontech-03"
+    ]
   },
   {
     "id": 1790311553061,
@@ -293,7 +327,10 @@
     "assigned_events": [
       "nontech-04"
     ],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": [
+      "nontech-04"
+    ]
   },
   {
     "id": 1790311577872,
@@ -305,7 +342,10 @@
     "assigned_events": [
       "nontech-06"
     ],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": [
+      "nontech-06"
+    ]
   },
   {
     "id": 1790311591633,
@@ -317,7 +357,10 @@
     "assigned_events": [
       "nontech-07"
     ],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": [
+      "nontech-07"
+    ]
   },
   {
     "id": 1790313865992,
@@ -329,6 +372,9 @@
     "assigned_events": [
       "tech-05"
     ],
-    "is_active": true
+    "is_active": true,
+    "assignedEvents": [
+      "tech-05"
+    ]
   }
 ]

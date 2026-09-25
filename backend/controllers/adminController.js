@@ -2553,19 +2553,52 @@ exports.updateRegistration = async (req, res) => {
     if (totalFee !== undefined || totalAmount !== undefined || total_fee !== undefined) {
       updatePayload.total_fee = Number(totalFee ?? totalAmount ?? total_fee ?? 0);
     }
-    if (game !== undefined) {
-      updatePayload.game = game ? String(game).trim().toUpperCase() : null;
-      try {
-        let vSnap = {};
-        if (existingReg?.venue_snapshot && typeof existingReg.venue_snapshot === 'string' && existingReg.venue_snapshot.startsWith('{')) {
-          vSnap = JSON.parse(existingReg.venue_snapshot);
-        }
-        vSnap.game = updatePayload.game;
-        updatePayload.venue_snapshot = JSON.stringify(vSnap);
-      } catch (_) {}
+
+    // Determine members list
+    const incomingMembers = teamMembers || team_members;
+    if (Array.isArray(incomingMembers)) {
+      updatePayload.members_count = incomingMembers.length + 1; // leader + members
+    } else if (membersCount !== undefined || members_count !== undefined) {
+      updatePayload.members_count = Number(membersCount || members_count || 1);
     }
+
+    // Safely update venue_snapshot with game and team metadata without injecting invalid column into table
+    let vSnap = {};
+    try {
+      if (existingReg?.venue_snapshot && typeof existingReg.venue_snapshot === 'string' && existingReg.venue_snapshot.trim().startsWith('{')) {
+        vSnap = JSON.parse(existingReg.venue_snapshot);
+      }
+    } catch (_) {}
+
+    if (game !== undefined) {
+      vSnap.game = game ? String(game).trim().toUpperCase() : null;
+    }
+    if (Array.isArray(incomingMembers)) {
+      vSnap.team_members = incomingMembers;
+    }
+    if (Object.keys(vSnap).length > 0) {
+      updatePayload.venue_snapshot = JSON.stringify(vSnap);
+    }
+
     if (paymentStatus !== undefined || payment_status !== undefined) {
-      updatePayload.payment_status = String(paymentStatus || payment_status || 'PENDING').toUpperCase();
+      const cleanPayStatus = String(paymentStatus || payment_status || 'PENDING').toUpperCase();
+      updatePayload.payment_status = cleanPayStatus;
+      if (cleanPayStatus === 'VERIFIED') {
+        updatePayload.is_verified = true;
+        updatePayload.verification_status = 'verified';
+        updatePayload.verified_at = updatePayload.verified_at || new Date().toISOString();
+        updatePayload.verified_by = updatePayload.verified_by || (req.user?.username || 'Admin');
+        updatePayload.is_flagged = false;
+      } else if (cleanPayStatus === 'REJECTED') {
+        updatePayload.is_verified = false;
+        updatePayload.verification_status = 'flagged';
+        updatePayload.is_flagged = true;
+        updatePayload.flag_reason = flagReason || flag_reason || existingReg?.flag_reason || 'Flagged/Rejected by admin';
+      } else {
+        updatePayload.is_verified = false;
+        updatePayload.verification_status = 'pending';
+        updatePayload.is_flagged = false;
+      }
     }
     if (paymentMethod !== undefined || payment_method !== undefined) {
       updatePayload.payment_method = String(paymentMethod || payment_method || 'ONLINE').toUpperCase();
@@ -2583,6 +2616,7 @@ exports.updateRegistration = async (req, res) => {
         updatePayload.verified_at = updatePayload.verified_at || new Date().toISOString();
         updatePayload.verified_by = updatePayload.verified_by || (req.user?.username || 'Admin');
         updatePayload.verification_status = 'verified';
+        updatePayload.is_flagged = false;
       }
     }
     if (flagReason !== undefined || flag_reason !== undefined) {
@@ -2592,24 +2626,31 @@ exports.updateRegistration = async (req, res) => {
     const cleanUtr = String(upiUtr || upi_utr || transactionId || transaction_id || '').trim();
     if (cleanUtr) {
       updatePayload.upi_utr = cleanUtr;
-    }
-
-    // Determine members list
-    const incomingMembers = teamMembers || team_members;
-    if (Array.isArray(incomingMembers)) {
-      updatePayload.members_count = incomingMembers.length + 1; // leader + members
-    } else if (membersCount !== undefined || members_count !== undefined) {
-      updatePayload.members_count = Number(membersCount || members_count || 1);
+      updatePayload.razorpay_payment_id = cleanUtr;
     }
 
     // 3. Update Supabase registrations table
-    const updateQuery = isUUID
+    let updateQuery = isUUID
       ? supabase.from('registrations').update(updatePayload).eq('id', regId)
       : supabase.from('registrations').update(updatePayload).ilike('ticket_code', ticketCode);
 
-    const { data: updatedDbData, error: updateErr } = await updateQuery.select('*, registration_members(*)');
+    let { data: updatedDbData, error: updateErr } = await updateQuery.select('*, registration_members(*)');
     if (updateErr) {
       console.warn('Supabase updateRegistration error:', updateErr.message);
+      // Auto-strip unknown column and retry if Supabase complains about schema cache
+      if (updateErr.message && updateErr.message.includes('Could not find the') && updateErr.message.includes('column')) {
+        const match = updateErr.message.match(/Could not find the '([^']+)' column/);
+        if (match && match[1]) {
+          const badCol = match[1];
+          delete updatePayload[badCol];
+          const retryQuery = isUUID
+            ? supabase.from('registrations').update(updatePayload).eq('id', regId)
+            : supabase.from('registrations').update(updatePayload).ilike('ticket_code', ticketCode);
+          const retryRes = await retryQuery.select('*, registration_members(*)');
+          updatedDbData = retryRes.data;
+          updateErr = retryRes.error;
+        }
+      }
     }
 
     // 4. Update team members in registration_members table if provided
