@@ -74,18 +74,24 @@ async function syncTableData() {
     }
 
     const usersFile = path.join(DATA_DIR, 'users.json');
-    if (fs.existsSync(usersFile)) {
+    const { data: dbUsers, error: dbUsersErr } = await supabase.from('users').select('*').order('id', { ascending: true });
+    if (!dbUsersErr && Array.isArray(dbUsers) && dbUsers.length > 0) {
+      fs.writeFileSync(usersFile, JSON.stringify(dbUsers, null, 2), 'utf-8');
+      console.log(`[Supabase Sync] Pulled ${dbUsers.length} live users from Supabase to local cache.`);
+    } else if (fs.existsSync(usersFile) && (!dbUsers || dbUsers.length === 0)) {
       const users = JSON.parse(fs.readFileSync(usersFile, 'utf-8') || '[]');
       for (const u of users) {
+        const assignedEvts = Array.isArray(u.assigned_events) ? u.assigned_events : (Array.isArray(u.assignedEvents) ? u.assignedEvents : (u.eventId || u.event_id ? [u.eventId || u.event_id] : []));
         await supabase.from('users').upsert({
           id: u.id,
           username: u.username,
           password: u.password,
           role: u.role,
-          assigned_events: u.assignedEvents || (u.eventId ? [u.eventId] : []),
-          is_active: u.isActive !== false
+          assigned_events: assignedEvts,
+          is_active: u.isActive !== false && u.is_active !== false
         }, { onConflict: 'id' });
       }
+      console.log(`[Supabase Sync] Seeded ${users.length} initial users to Supabase.`);
     }
   } catch (err) {
     console.warn('[Supabase Sync] Users/Roles sync note:', err.message);

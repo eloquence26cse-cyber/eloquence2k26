@@ -92,28 +92,37 @@ export default function EventCoordinatorDashboard({ token, user, onLogout }) {
   // ── 2. Determine Allocated Event(s) for this Coordinator ──
   // Check user.assignedEvents or match user.username with coordinator data
   const userAllocatedEventIds = useMemo(() => {
-    if (user?.assignedEvents && Array.isArray(user.assignedEvents) && user.assignedEvents.length > 0) {
-      return user.assignedEvents;
+    let raw = user?.assignedEvents || user?.assigned_events || (user?.eventId ? [user.eventId] : null);
+    if (typeof raw === 'string') {
+      try { raw = JSON.parse(raw); } catch (_) { raw = [raw]; }
     }
-    if (user?.eventId) {
-      return [user.eventId];
+    if (Array.isArray(raw) && raw.length > 0) {
+      return raw;
     }
-    // Try matching coordinator name with logged in username or role
-    const uName = String(user?.username || '').toLowerCase();
-    const matchedCoord = coordinatorsList.find(c => 
-      c.name?.toLowerCase().includes(uName) || uName.includes(c.name?.toLowerCase().split(' ')[0])
-    );
-    if (matchedCoord && matchedCoord.assignedEvents?.length > 0) {
-      return matchedCoord.assignedEvents;
+    // Try matching coordinator name with logged in username
+    const uName = String(user?.username || '').toLowerCase().trim();
+    if (uName) {
+      const matchedCoord = coordinatorsList.find(c => {
+        const cName = String(c.name || '').toLowerCase().trim();
+        return cName === uName || (uName.length >= 3 && (cName.includes(uName) || uName.includes(cName.split(' ')[0])));
+      });
+      if (matchedCoord) {
+        let cEvts = matchedCoord.assignedEvents || matchedCoord.assigned_events;
+        if (typeof cEvts === 'string') {
+          try { cEvts = JSON.parse(cEvts); } catch (_) { cEvts = [cEvts]; }
+        }
+        if (Array.isArray(cEvts) && cEvts.length > 0) {
+          return cEvts;
+        }
+      }
     }
-    // Default fallback: first technical event
-    return ['tech-01'];
+    return [];
   }, [user, coordinatorsList]);
 
   // List of events strictly allocated to this coordinator
   const allocatedEventsList = useMemo(() => {
     if (!userAllocatedEventIds || userAllocatedEventIds.length === 0) {
-      return eventsList.length > 0 ? [eventsList[0]] : defaultEvents.slice(0, 1);
+      return eventsList.length > 0 ? eventsList.slice(0, 1) : defaultEvents.slice(0, 1);
     }
     const filtered = eventsList.filter(e => {
       const eId = (e.id || '').toLowerCase().trim();
@@ -808,7 +817,7 @@ export default function EventCoordinatorDashboard({ token, user, onLogout }) {
               >
                 {allocatedEventsList.map(evt => (
                   <option key={evt.id} value={evt.id}>
-                    {evt.name} ({evt.category === 'technical' ? 'TECH' : 'NON-TECH'})
+                    {String(evt.id).toUpperCase()} • {evt.name} ({evt.category === 'technical' ? 'TECH' : 'NON-TECH'})
                   </option>
                 ))}
               </select>
