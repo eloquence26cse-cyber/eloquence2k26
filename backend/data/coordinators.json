@@ -148,12 +148,13 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "tech-06"
+      "tech-06",
+      "tech-05"
     ],
     "is_active": true,
     "display_order": 11,
     "created_at": "2026-09-16T10:16:16.707865+00:00",
-    "updated_at": "2026-09-22T06:52:46.173+00:00"
+    "updated_at": "2026-09-25T10:34:38.28+00:00"
   },
   {
     "id": "coord-tech-06-b",
@@ -165,12 +166,13 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "tech-06"
+      "tech-06",
+      "tech-05"
     ],
     "is_active": true,
     "display_order": 12,
     "created_at": "2026-09-16T10:16:16.790034+00:00",
-    "updated_at": "2026-09-22T06:53:47.522+00:00"
+    "updated_at": "2026-09-25T10:34:56.084+00:00"
   },
   {
     "id": "coord-nontech-01-a",
@@ -328,23 +330,6 @@
     "updated_at": "2026-09-16T10:23:29.196+00:00"
   },
   {
-    "id": "coord-1789554297407",
-    "name": "Mohammed Sakhee B",
-    "phone": "8838731526",
-    "whatsapp": "8838731526",
-    "email": "",
-    "department": "CSE",
-    "year": "4th Year",
-    "role": "Lead Coordinator",
-    "assigned_events": [
-      "nontech-01"
-    ],
-    "is_active": true,
-    "display_order": 22,
-    "created_at": "2026-09-16T10:24:58.282384+00:00",
-    "updated_at": "2026-09-16T10:24:57.407+00:00"
-  },
-  {
     "id": "coord-nontech-06-b",
     "name": "Mohammed Sharuk I.",
     "phone": "9994580064",
@@ -360,6 +345,23 @@
     "display_order": 22,
     "created_at": "2026-09-16T10:16:17.730142+00:00",
     "updated_at": "2026-09-16T10:23:39.887+00:00"
+  },
+  {
+    "id": "coord-1789554297407",
+    "name": "Mohammed Sakhee B",
+    "phone": "8838731526",
+    "whatsapp": "8838731526",
+    "email": "",
+    "department": "CSE",
+    "year": "4th Year",
+    "role": "Lead Coordinator",
+    "assigned_events": [
+      "nontech-01"
+    ],
+    "is_active": true,
+    "display_order": 22,
+    "created_at": "2026-09-16T10:24:58.282384+00:00",
+    "updated_at": "2026-09-16T10:24:57.407+00:00"
   },
   {
     "id": "coord-1789651271488",

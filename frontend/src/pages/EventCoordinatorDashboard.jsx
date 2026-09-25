@@ -170,13 +170,27 @@ export default function EventCoordinatorDashboard({ token, user, onLogout }) {
         if (evts && evts.length > 0) setEventsList(evts);
       }).catch(() => {});
 
-      // 2. Fetch Registrations
-      const regRes = await fetch(getApiUrl('/api/registrations'));
-      const regJson = await regRes.json();
-      const rawRegs = regJson.registrations || regJson.data || (Array.isArray(regJson) ? regJson : []);
-      if (Array.isArray(rawRegs)) {
-        setRegistrationsList(rawRegs);
+      // 2. Fetch Registrations (Online + Offline)
+      const [regRes, offlineRes] = await Promise.all([
+        fetch(getApiUrl('/api/registrations')).catch(() => null),
+        fetch(getApiUrl('/api/offline-registrations')).catch(() => null)
+      ]);
+      let combinedRegs = [];
+      if (regRes) {
+        try {
+          const regJson = await regRes.json();
+          const rawRegs = regJson.registrations || regJson.data || (Array.isArray(regJson) ? regJson : []);
+          if (Array.isArray(rawRegs)) combinedRegs.push(...rawRegs);
+        } catch (_) {}
       }
+      if (offlineRes) {
+        try {
+          const offJson = await offlineRes.json();
+          const rawOff = offJson.registrations || offJson.data || (Array.isArray(offJson) ? offJson : []);
+          if (Array.isArray(rawOff)) combinedRegs.push(...rawOff);
+        } catch (_) {}
+      }
+      setRegistrationsList(combinedRegs);
 
       // 3. Fetch Coordinators
       const coordRes = await fetch(getApiUrl('/api/coordinators'));

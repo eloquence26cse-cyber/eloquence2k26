@@ -50,6 +50,7 @@ import {
   FaDownload,
   FaCheckDouble,
   FaExclamationTriangle,
+  FaSyncAlt,
   FaEdit
 } from 'react-icons/fa';
 import defaultEvents from '../data/events.js';
@@ -82,6 +83,8 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
   // State
   const [eventsList, setEventsList] = useState(defaultEvents);
   const [registrationsList, setRegistrationsList] = useState([]);
+  const [offlineRegistrationsList, setOfflineRegistrationsList] = useState([]);
+  const [loadingOffline, setLoadingOffline] = useState(false);
   const [coordinatorsList, setCoordinatorsList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statFilter, setStatFilter] = useState('all'); // 'all' | 'online' | 'offline' | 'technical' | 'non-technical'
@@ -102,7 +105,62 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
   const [selectedCoordName, setSelectedCoordName] = useState('');
   const [isSendingList, setIsSendingList] = useState(false);
   const [sendGameScope, setSendGameScope] = useState('ALL'); // 'ALL' | 'FREE FIRE' | 'BGMI'
+  const [sendTypeScope, setSendTypeScope] = useState('ALL'); // 'ALL' | 'ONLINE' | 'OFFLINE'
   const [bocGameFilter, setBocGameFilter] = useState('all'); // 'all' | 'FREE FIRE' | 'BGMI'
+  const [cardTypeFilters, setCardTypeFilters] = useState({}); // { [eventId]: 'ALL' | 'ONLINE' | 'OFFLINE' }
+
+  // Helper Analytics & Combined Registrations
+  const isOnlineRecord = (r) => (r.payment_method || r.paymentMethod) !== 'ON_SITE_DESK' && !r.isOffline;
+  const getEventCategory = (r) => {
+    const evt = eventsList.find(e => e.id === (r.event_id || r.eventId));
+    if (evt) return evt.category;
+    const id = (r.event_id || r.eventId || '').toLowerCase();
+    return id.startsWith('tech') ? 'technical' : 'non-technical';
+  };
+
+  const getFee = (r) => Number(r.total_fee || r.totalAmount || r.total_amount || 0);
+
+  const onlineRegs = registrationsList.filter(isOnlineRecord);
+  const offlineRegs = offlineRegistrationsList;
+  const allCombinedRegs = [...onlineRegs, ...offlineRegistrationsList];
+  const techRegs = allCombinedRegs.filter(r => getEventCategory(r) === 'technical');
+  const nonTechRegs = allCombinedRegs.filter(r => getEventCategory(r) === 'non-technical');
+
+  const onlineRevenue = onlineRegs.reduce((sum, r) => sum + getFee(r), 0);
+  const offlineRevenue = offlineRegistrationsList.reduce((sum, r) => sum + getFee(r), 0);
+  const totalRevenue = onlineRevenue + offlineRevenue;
+  const techRevenue = techRegs.reduce((sum, r) => sum + getFee(r), 0);
+  const nonTechRevenue = nonTechRegs.reduce((sum, r) => sum + getFee(r), 0);
+
+  const getTeamMembers = (r) => {
+    if (Array.isArray(r.offline_registration_members) && r.offline_registration_members.length > 0) {
+      return r.offline_registration_members.map(m => (typeof m === 'string' ? m : (m.member_name || m.name || m.fullName || ''))).filter(Boolean);
+    }
+    if (Array.isArray(r.offline_registrations_member) && r.offline_registrations_member.length > 0) {
+      return r.offline_registrations_member.map(m => (typeof m === 'string' ? m : (m.member_name || m.name || m.fullName || ''))).filter(Boolean);
+    }
+    if (Array.isArray(r.registration_members) && r.registration_members.length > 0) {
+      return r.registration_members.map(m => (typeof m === 'string' ? m : (m.member_name || m.name || m.fullName || ''))).filter(Boolean);
+    }
+    if (Array.isArray(r.teamMembersList) && r.teamMembersList.length > 0) {
+      return r.teamMembersList;
+    }
+    if (Array.isArray(r.teamMembers) && r.teamMembers.length > 0) {
+      return r.teamMembers.map(m => (typeof m === 'string' ? m : (m.fullName || m.name || m.member_name || ''))).filter(Boolean);
+    }
+    if (Array.isArray(r.team_members) && r.team_members.length > 0) {
+      return r.team_members.map(m => (typeof m === 'string' ? m : (m.fullName || m.name || m.member_name || ''))).filter(Boolean);
+    }
+    if (typeof r.team_members === 'string') {
+      try {
+        const parsed = JSON.parse(r.team_members);
+        if (Array.isArray(parsed)) return parsed.map(m => (typeof m === 'string' ? m : (m.fullName || m.name || ''))).filter(Boolean);
+      } catch (e) {
+        if (r.team_members.trim()) return [r.team_members.trim()];
+      }
+    }
+    return [];
+  };
 
   // On-Site Registration Form State (Full Online-Matching Form Structure)
   const [onSiteEventId, setOnSiteEventId] = useState('');
@@ -186,6 +244,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
   useEffect(() => {
     fetchEvents();
     fetchRegistrations();
+    fetchOfflineRegistrations();
     fetchCoordinators();
   }, [token]);
 
@@ -213,6 +272,73 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
       })
       .catch(err => console.warn('Error fetching registrations list:', err))
       .finally(() => setLoading(false));
+  };
+
+  const fetchOfflineRegistrations = () => {
+    setLoadingOffline(true);
+    fetch(getApiUrl('/api/offline-registrations'))
+      .then(res => res.json())
+      .then(result => {
+        if (result.success && Array.isArray(result.registrations)) {
+          setOfflineRegistrationsList(result.registrations);
+        } else if (result.success && Array.isArray(result.data)) {
+          setOfflineRegistrationsList(result.data);
+        } else if (Array.isArray(result)) {
+          setOfflineRegistrationsList(result);
+        }
+      })
+      .catch(err => console.warn('Error fetching offline registrations:', err))
+      .finally(() => setLoadingOffline(false));
+  };
+
+  const [isSyncingSupabase, setIsSyncingSupabase] = useState(false);
+
+  const handleSyncWithSupabase = async () => {
+    setIsSyncingSupabase(true);
+    const toastId = toast.loading('Syncing offline registrations with Supabase live tables...');
+    try {
+      const res = await fetch(getApiUrl('/api/offline-registrations/sync'), {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`✓ Synced ${data.count} record(s) with Supabase (offline_registrations & offline_registration_members)!`, { id: toastId, duration: 5000 });
+        fetchOfflineRegistrations();
+        fetchRegistrations();
+      } else {
+        toast.error(data.message || 'Sync failed', { id: toastId });
+      }
+    } catch (err) {
+      toast.error('Network error during Supabase sync', { id: toastId });
+    } finally {
+      setIsSyncingSupabase(false);
+    }
+  };
+
+  const handleDeleteOfflineRegistration = async (reg) => {
+    const id = reg.id || reg.ticket_code || reg.ticketCode;
+    const name = reg.full_name || reg.fullName || 'Participant';
+    const ticket = reg.ticket_code || reg.ticketCode || reg.registrationId || id;
+    if (!window.confirm(`Delete offline registration for "${name}" (Ticket #${ticket}) from the separate DB table?`)) {
+      return;
+    }
+
+    const toastId = toast.loading(`Deleting offline registration #${ticket}...`);
+    try {
+      const res = await fetch(getApiUrl(`/api/offline-registrations/${encodeURIComponent(id)}`), {
+        method: 'DELETE'
+      });
+      const resData = await res.json();
+      if (resData.success) {
+        toast.success(`Deleted offline registration #${ticket}`, { id: toastId });
+        fetchOfflineRegistrations();
+        fetchRegistrations();
+      } else {
+        toast.error(resData.message || 'Failed to delete offline registration', { id: toastId });
+      }
+    } catch (err) {
+      toast.error('Network error deleting offline registration', { id: toastId });
+    }
   };
 
   const fetchCoordinators = () => {
@@ -247,17 +373,23 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
     return 'FREE FIRE';
   };
 
-  const formatTournamentRosterText = (evt, gameScope = 'ALL') => {
+  const formatTournamentRosterText = (evt, gameScope = 'ALL', typeScope = 'ALL') => {
     if (!evt) return '';
     const isEsports = isEsportsEvent(evt);
-    let regs = registrationsList.filter(r => (r.event_id || r.eventId) === evt.id);
+    let regs = allCombinedRegs.filter(r => (r.event_id || r.eventId) === evt.id);
+    if (typeScope === 'OFFLINE') {
+      regs = regs.filter(r => !isOnlineRecord(r));
+    } else if (typeScope === 'ONLINE') {
+      regs = regs.filter(r => isOnlineRecord(r));
+    }
     if (isEsports && gameScope && gameScope !== 'ALL' && gameScope !== 'all') {
       regs = regs.filter(r => getRegEsportsGame(r) === gameScope.toUpperCase());
     }
 
     const titleScope = isEsports && gameScope && gameScope !== 'ALL' && gameScope !== 'all' ? ` [${gameScope.toUpperCase()} DIVISION]` : '';
+    const titleType = typeScope === 'OFFLINE' ? ' [🏢 OFFLINE DESK REGISTRATIONS]' : (typeScope === 'ONLINE' ? ' [🌐 ONLINE REGISTRATIONS]' : '');
     let text = `🏆 *ELOQUENCE 2026 — OFFICIAL TOURNAMENT ROSTER*\n`;
-    text += `🎯 *EVENT:* ${evt.name}${titleScope}\n`;
+    text += `🎯 *EVENT:* ${evt.name}${titleScope}${titleType}\n`;
     text += `📍 *VENUE:* ${evt.venue || 'CSE Dept Lab'}\n`;
     text += `👥 *TOTAL SQUADS / ENTRIES:* ${regs.length}\n`;
     text += `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
@@ -268,6 +400,8 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
     }
 
     regs.forEach((r, idx) => {
+      const isOff = !isOnlineRecord(r);
+      const modeTag = isOff ? ' [OFFLINE DESK]' : ' [ONLINE]';
       const gameBadge = isEsports ? ` [${getRegEsportsGame(r)}]` : '';
       const teamName = r.team_name || r.teamName ? ` "${r.team_name || r.teamName}"` : '';
       const lead = r.full_name || r.fullName || 'Lead Player';
@@ -276,7 +410,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
       const college = r.college || 'CAHCET';
       const members = getTeamMembers(r);
 
-      text += `*#${idx + 1}${teamName}${gameBadge}*\n`;
+      text += `*#${idx + 1}${teamName}${modeTag}${gameBadge}*\n`;
       text += `🎫 Ticket: ${ticket}\n`;
       text += `👑 Captain: ${lead} (📞 ${phone})\n`;
       text += `🏫 College: ${college}\n`;
@@ -295,16 +429,16 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
     return text;
   };
 
-  const handleCopyRosterToClipboard = (evt, gameScope = 'ALL') => {
-    const text = formatTournamentRosterText(evt, gameScope);
+  const handleCopyRosterToClipboard = (evt, gameScope = 'ALL', typeScope = 'ALL') => {
+    const text = formatTournamentRosterText(evt, gameScope, typeScope);
     if (!text) return toast.error('No roster data to copy');
     navigator.clipboard.writeText(text)
       .then(() => toast.success(`Tournament roster for ${evt.name} copied to clipboard!`))
       .catch(() => toast.error('Failed to copy to clipboard'));
   };
 
-  const handleShareRosterWhatsApp = (evt, gameScope = 'ALL', targetPhone = '') => {
-    const text = formatTournamentRosterText(evt, gameScope);
+  const handleShareRosterWhatsApp = (evt, gameScope = 'ALL', targetPhone = '', typeScope = 'ALL') => {
+    const text = formatTournamentRosterText(evt, gameScope, typeScope);
     if (!text) return toast.error('No roster data to share');
     const encoded = encodeURIComponent(text);
     const cleanPhone = (targetPhone || '').replace(/\D/g, '');
@@ -334,9 +468,14 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
   };
 
   // PDF Export Sheet Handler
-  const handleExportPDF = (targetEvt, filterGame = 'ALL') => {
+  const handleExportPDF = (targetEvt, filterGame = 'ALL', typeScope = 'ALL') => {
     const isEsports = isEsportsEvent(targetEvt);
-    let evtRegs = registrationsList.filter(r => (r.event_id || r.eventId) === targetEvt.id);
+    let evtRegs = allCombinedRegs.filter(r => (r.event_id || r.eventId) === targetEvt.id);
+    if (typeScope === 'OFFLINE') {
+      evtRegs = evtRegs.filter(r => !isOnlineRecord(r));
+    } else if (typeScope === 'ONLINE') {
+      evtRegs = evtRegs.filter(r => isOnlineRecord(r));
+    }
     if (isEsports && filterGame && filterGame !== 'ALL' && filterGame !== 'all') {
       evtRegs = evtRegs.filter(r => getRegEsportsGame(r) === filterGame.toUpperCase());
     }
@@ -345,14 +484,17 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
     if (!win) return toast.error('Please allow popups to export PDF');
 
     const subTitle = isEsports && filterGame && filterGame !== 'ALL' && filterGame !== 'all' ? ` — ${filterGame.toUpperCase()} DIVISION` : '';
+    const typeTitle = typeScope === 'OFFLINE' ? ' [OFFLINE DESK]' : (typeScope === 'ONLINE' ? ' [ONLINE]' : '');
     const ffCount = evtRegs.filter(r => getRegEsportsGame(r) === 'FREE FIRE').length;
     const bgmiCount = evtRegs.filter(r => getRegEsportsGame(r) === 'BGMI').length;
+    const offCount = evtRegs.filter(r => !isOnlineRecord(r)).length;
+    const onlCount = evtRegs.filter(r => isOnlineRecord(r)).length;
 
     const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>${targetEvt.name}${subTitle} - Official Participant Sheet</title>
+        <title>${targetEvt.name}${subTitle}${typeTitle} - Official Participant Sheet</title>
         <style>
           body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 25px; color: #1e293b; line-height: 1.5; }
           .header { text-align: center; margin-bottom: 25px; border-bottom: 3px solid #2563eb; padding-bottom: 12px; }
@@ -366,6 +508,8 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
           .badge { display: inline-block; background: #059669; color: #ffffff; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: bold; }
           .badge-ff { display: inline-block; background: #ea580c; color: #ffffff; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: bold; }
           .badge-bgmi { display: inline-block; background: #0891b2; color: #ffffff; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+          .badge-offline { display: inline-block; background: #ea580c; color: #ffffff; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+          .badge-online { display: inline-block; background: #2563eb; color: #ffffff; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: bold; }
           .members-box { background: #f1f5f9; padding: 6px 8px; border-radius: 6px; font-size: 11px; margin-top: 3px; }
           .footer { margin-top: 40px; display: flex; justify-content: space-between; font-size: 12px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 15px; }
         </style>
@@ -377,9 +521,10 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
         </div>
 
         <div class="info-bar">
-          <div><strong>EVENT:</strong> ${targetEvt.name}${subTitle} (${targetEvt.category.toUpperCase()})</div>
+          <div><strong>EVENT:</strong> ${targetEvt.name}${subTitle}${typeTitle} (${targetEvt.category.toUpperCase()})</div>
           ${isEsports && (!filterGame || filterGame === 'ALL' || filterGame === 'all') ? `<div><strong>TRACKS:</strong> 🔥 Free Fire: ${ffCount} | 🎯 BGMI: ${bgmiCount}</div>` : ''}
-          <div><strong>TOTAL REGISTRATIONS:</strong> ${evtRegs.length}</div>
+          <div><strong>BREAKDOWN:</strong> 🌐 Online: ${onlCount} | 🏢 Offline: ${offCount}</div>
+          <div><strong>TOTAL:</strong> ${evtRegs.length}</div>
           <div><strong>DATE:</strong> ${new Date().toLocaleDateString()}</div>
         </div>
 
@@ -387,6 +532,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
           <thead>
             <tr>
               <th style="width: 30px;">#</th>
+              <th style="width: 80px;">Type</th>
               <th style="width: 90px;">Ticket Code</th>
               ${isEsports ? '<th style="width: 85px;">Esports Game</th>' : ''}
               <th style="width: 110px;">Team Name</th>
@@ -398,12 +544,15 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
           </thead>
           <tbody>
             ${evtRegs.map((r, i) => {
+              const isOff = !isOnlineRecord(r);
               const members = getTeamMembers(r);
               const game = getRegEsportsGame(r);
               const gameBadge = game === 'BGMI' ? '<span class="badge-bgmi">🎯 BGMI</span>' : '<span class="badge-ff">🔥 FREE FIRE</span>';
+              const typeBadge = isOff ? '<span class="badge-offline">OFFLINE</span>' : '<span class="badge-online">ONLINE</span>';
               return `
                 <tr>
                   <td>${i + 1}</td>
+                  <td>${typeBadge}</td>
                   <td><strong>${r.ticket_code || r.registrationId || r.id || '-'}</strong></td>
                   ${isEsports ? `<td>${gameBadge}</td>` : ''}
                   <td>${r.team_name || r.teamName ? `<span class="badge">${r.team_name || r.teamName}</span>` : 'Individual'}</td>
@@ -416,7 +565,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                 </tr>
               `;
             }).join('')}
-            ${evtRegs.length === 0 ? `<tr><td colspan="${isEsports ? 8 : 7}" style="text-align:center;padding:20px;">No registered participants for this track.</td></tr>` : ''}
+            ${evtRegs.length === 0 ? `<tr><td colspan="${isEsports ? 9 : 8}" style="text-align:center;padding:20px;">No registered participants for this track.</td></tr>` : ''}
           </tbody>
         </table>
 
@@ -435,10 +584,11 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
     win.document.close();
   };
 
-  // Open Send Modal
-  const handleOpenSendModal = (evt) => {
+  // Open Send Modal (supports scope: 'ALL' | 'ONLINE' | 'OFFLINE')
+  const handleOpenSendModal = (evt, initialTypeScope = 'ALL') => {
     setSendTargetEvent(evt);
     setSendGameScope('ALL');
+    setSendTypeScope(initialTypeScope);
     const assigned = coordinatorsList.find(c => Array.isArray(c.assignedEvents) && c.assignedEvents.map(e => e.toLowerCase()).includes(evt.id.toLowerCase()));
     if (assigned) {
       setSelectedCoordName(assigned.name);
@@ -461,7 +611,8 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
 
     setIsSendingList(true);
     const scopeLabel = isEsports && effectiveScope !== 'ALL' ? ` (${effectiveScope})` : '';
-    const toastId = toast.loading(`Dispatching list for "${sendTargetEvent.name}${scopeLabel}"...`);
+    const typeLabel = sendTypeScope === 'OFFLINE' ? ' [OFFLINE DESK]' : (sendTypeScope === 'ONLINE' ? ' [ONLINE]' : '');
+    const toastId = toast.loading(`Dispatching ${sendTypeScope === 'OFFLINE' ? 'offline ' : ''}list for "${sendTargetEvent.name}${scopeLabel}"...`);
 
     fetch(getApiUrl('/api/send-participant-list'), {
       method: 'POST',
@@ -470,7 +621,9 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
         eventId: sendTargetEvent.id,
         eventName: sendTargetEvent.name,
         coordinatorName: selectedCoordName.trim(),
-        gameScope: effectiveScope
+        gameScope: effectiveScope,
+        registrationType: sendTypeScope,
+        dispatchScope: sendTypeScope
       })
     })
       .then(res => res.json())
@@ -644,6 +797,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
 
         if (importedDocObj) setImportedDocument(importedDocObj);
         setOnSiteTicketResult(ticket);
+        fetchOfflineRegistrations();
         fetchRegistrations();
         toast.success(`✓ Automatically Registered in Offline Desk! Ticket #${ticket.ticketCode}`, { id: toastId, duration: 6000 });
       } else {
@@ -891,38 +1045,41 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
     if (!row) return;
 
     const eventObj = eventsList.find(e => e.id === row.eventId) || eventsList[0];
-    const payload = {
-      currentEvent: eventObj,
-      fields: {
-        fullName: row.teamName,
-        email: row.email,
-        phone: row.phone,
-        whatsapp: row.phone,
-        college: row.college,
-        department: row.department,
-        year: row.year,
-        teamName: eventObj.isTeam ? row.teamName : null,
-        teamMembers: row.teamMembers || [],
-        onsiteUniqueId: row.id
-      },
+    const recPayload = {
+      ticketCode: row.id,
+      onsiteUniqueId: row.id,
+      eventId: eventObj.id,
+      eventName: eventObj.name,
+      category: eventObj.category,
+      fullName: row.teamName,
+      teamName: eventObj.isTeam ? row.teamName : null,
+      email: row.email,
+      phone: row.phone,
+      whatsapp: row.phone,
+      college: row.college,
+      department: row.department,
+      year: row.year,
       totalFee: Number(eventObj.feePerHead) || 50,
+      teamMembers: row.teamMembers || [],
+      fileName: row.fileName || null,
       paymentMethod: 'ON_SITE_DESK',
-      paymentStatus: 'paid'
+      isOffline: true
     };
 
     setIsRegisteringOnSite(true);
-    const toastId = toast.loading(`Importing ${row.teamName} into Offline Desk...`);
+    const toastId = toast.loading(`Importing ${row.teamName} to Supabase offline tables...`);
 
     try {
-      const res = await fetch(getApiUrl('/api/register'), {
+      const res = await fetch(getApiUrl('/api/offline-registrations/import'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ registrations: [recPayload] })
       });
       const resData = await res.json();
       if (resData.success) {
-        const ticket = resData.ticketData || {
-          ticketCode: row.id,
+        const saved = resData.saved && resData.saved[0] ? resData.saved[0] : recPayload;
+        const ticket = {
+          ticketCode: saved.ticket_code || row.id,
           eventName: eventObj.name,
           category: eventObj.category,
           leadName: row.teamName,
@@ -934,8 +1091,8 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
           phone: row.phone,
           whatsapp: row.phone,
           teamName: row.teamName,
-          membersCount: row.teamMembers.length || 1,
-          teamMembersList: row.teamMembers,
+          membersCount: (row.teamMembers && row.teamMembers.length > 0) ? row.teamMembers.length + 1 : 1,
+          teamMembersList: row.teamMembers || [],
           totalFee: Number(eventObj.feePerHead) || 50,
           totalAmount: Number(eventObj.feePerHead) || 50,
           venue: eventObj.venue || 'CSE Dept Labs',
@@ -946,8 +1103,9 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
         // Mark status imported in table
         setImportedDocList(prev => prev.map(r => r.id === row.id ? { ...r, status: 'imported' } : r));
         setOnSiteTicketResult(ticket);
+        fetchOfflineRegistrations();
         fetchRegistrations();
-        toast.success(`✓ Confirmed & Imported ${row.teamName} to Offline Desk! Ticket #${ticket.ticketCode}`, { id: toastId, duration: 6000 });
+        toast.success(`✓ Linked & Saved ${row.teamName} to Supabase offline tables! Ticket #${ticket.ticketCode}`, { id: toastId, duration: 6000 });
       } else {
         toast.error(resData.message || 'Import failed', { id: toastId });
       }
@@ -966,48 +1124,51 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
       return;
     }
 
-    const toastId = toast.loading(`Batch importing ${validPendingRows.length} valid records to Offline Desk...`);
-    let successCount = 0;
+    const toastId = toast.loading(`Batch importing & linking ${validPendingRows.length} valid records to Supabase offline tables...`);
 
-    for (const row of validPendingRows) {
+    const recordsToImport = validPendingRows.map(row => {
       const eventObj = eventsList.find(e => e.id === row.eventId) || eventsList[0];
-      const payload = {
-        currentEvent: eventObj,
-        fields: {
-          fullName: row.teamName,
-          email: row.email,
-          phone: row.phone,
-          whatsapp: row.phone,
-          college: row.college,
-          department: row.department,
-          year: row.year,
-          teamName: eventObj.isTeam ? row.teamName : null,
-          teamMembers: row.teamMembers || [],
-          onsiteUniqueId: row.id
-        },
+      return {
+        ticketCode: row.id,
+        onsiteUniqueId: row.id,
+        eventId: eventObj.id,
+        eventName: eventObj.name,
+        category: eventObj.category,
+        fullName: row.teamName,
+        teamName: eventObj.isTeam ? row.teamName : null,
+        email: row.email,
+        phone: row.phone,
+        whatsapp: row.phone,
+        college: row.college,
+        department: row.department,
+        year: row.year,
         totalFee: Number(eventObj.feePerHead) || 50,
+        teamMembers: row.teamMembers || [],
+        fileName: row.fileName || null,
         paymentMethod: 'ON_SITE_DESK',
-        paymentStatus: 'paid'
+        isOffline: true
       };
+    });
 
-      try {
-        const res = await fetch(getApiUrl('/api/register'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const resData = await res.json();
-        if (resData.success) {
-          successCount++;
-        }
-      } catch (e) {
-        console.warn('Batch item error:', e);
+    try {
+      const res = await fetch(getApiUrl('/api/offline-registrations/import'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registrations: recordsToImport })
+      });
+      const resData = await res.json();
+      if (resData.success) {
+        setImportedDocList(prev => prev.map(r => r.isValid ? { ...r, status: 'imported' } : r));
+        fetchOfflineRegistrations();
+        fetchRegistrations();
+        toast.success(`✓ Successfully linked & saved ${resData.savedCount || validPendingRows.length} record(s) to Supabase offline_registrations & offline_registration_members!`, { id: toastId, duration: 6000 });
+      } else {
+        toast.error(resData.message || 'Batch import failed', { id: toastId });
       }
+    } catch (err) {
+      console.error('Batch import error:', err);
+      toast.error('Network error during batch import', { id: toastId });
     }
-
-    setImportedDocList(prev => prev.map(r => r.isValid ? { ...r, status: 'imported' } : r));
-    fetchRegistrations();
-    toast.success(`✓ Successfully imported ${successCount} valid record(s) into Offline Desk!`, { id: toastId });
   };
 
   // On-Site Registration Submission
@@ -1086,6 +1247,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
 
         toast.success(`Registration completed! Ticket #${ticket.ticketCode}`, { id: toastId, duration: 6000 });
         setOnSiteTicketResult(ticket);
+        fetchOfflineRegistrations();
         fetchRegistrations();
       } else {
         toast.error(resData.message || 'Registration failed', { id: toastId });
@@ -1109,51 +1271,8 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
     setExtractedDocData(null);
   };
 
-  // Helper Analytics Calculations
-  const isOnlineRecord = (r) => (r.payment_method || r.paymentMethod) !== 'ON_SITE_DESK';
-  const getEventCategory = (r) => {
-    const evt = eventsList.find(e => e.id === (r.event_id || r.eventId));
-    if (evt) return evt.category;
-    const id = (r.event_id || r.eventId || '').toLowerCase();
-    return id.startsWith('tech') ? 'technical' : 'non-technical';
-  };
-
-  const getFee = (r) => Number(r.total_fee || r.totalAmount || r.total_amount || 0);
-
-  const onlineRegs = registrationsList.filter(isOnlineRecord);
-  const offlineRegs = registrationsList.filter(r => !isOnlineRecord(r));
-  const techRegs = registrationsList.filter(r => getEventCategory(r) === 'technical');
-  const nonTechRegs = registrationsList.filter(r => getEventCategory(r) === 'non-technical');
-
-  const totalRevenue = registrationsList.reduce((sum, r) => sum + getFee(r), 0);
-  const onlineRevenue = onlineRegs.reduce((sum, r) => sum + getFee(r), 0);
-  const offlineRevenue = offlineRegs.reduce((sum, r) => sum + getFee(r), 0);
-  const techRevenue = techRegs.reduce((sum, r) => sum + getFee(r), 0);
-  const nonTechRevenue = nonTechRegs.reduce((sum, r) => sum + getFee(r), 0);
-
-  const getTeamMembers = (r) => {
-    if (Array.isArray(r.registration_members) && r.registration_members.length > 0) {
-      return r.registration_members.map(m => m.member_name || m.name || m);
-    }
-    if (Array.isArray(r.teamMembersList) && r.teamMembersList.length > 0) {
-      return r.teamMembersList;
-    }
-    if (Array.isArray(r.teamMembers) && r.teamMembers.length > 0) {
-      return r.teamMembers;
-    }
-    if (typeof r.team_members === 'string') {
-      try {
-        const parsed = JSON.parse(r.team_members);
-        if (Array.isArray(parsed)) return parsed.map(m => typeof m === 'string' ? m : (m.name || m));
-      } catch (e) {
-        if (r.team_members.trim()) return [r.team_members.trim()];
-      }
-    }
-    return [];
-  };
-
   // Filtered registrations for Dashboard breakdown table
-  const dashboardFilteredRegs = registrationsList.filter(r => {
+  const dashboardFilteredRegs = allCombinedRegs.filter(r => {
     if (statFilter === 'online' && !isOnlineRecord(r)) return false;
     if (statFilter === 'offline' && isOnlineRecord(r)) return false;
     if (statFilter === 'technical' && getEventCategory(r) !== 'technical') return false;
@@ -1169,7 +1288,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
   });
 
   // Filtered registrations for Participant List view (event-wise & team-wise)
-  const participantFilteredRegs = registrationsList.filter(r => {
+  const participantFilteredRegs = allCombinedRegs.filter(r => {
     if (partEventFilter !== 'all') {
       if (partEventFilter === 'nontech-05::FREE FIRE') {
         if ((r.event_id || r.eventId) !== 'nontech-05') return false;
@@ -1455,7 +1574,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                 <FaListAlt style={S.navIcon} />
                 <span>Register List</span>
               </div>
-              <span style={S.badgeCount}>{registrationsList.length}</span>
+              <span style={S.badgeCount}>{allCombinedRegs.length}</span>
             </div>
           </button>
 
@@ -1494,7 +1613,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                 <FaUsers style={S.navIcon} />
                 <span>Participant List</span>
               </div>
-              <span style={S.badgeCount}>{registrationsList.length}</span>
+              <span style={S.badgeCount}>{allCombinedRegs.length}</span>
             </div>
           </button>
         </nav>
@@ -2493,7 +2612,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
 
               <div style={S.card}>
                 <div style={S.cardHeaderFlex}>
-                  <h3 style={S.cardTitle}>Complete Registered Participants ({registrationsList.length})</h3>
+                  <h3 style={S.cardTitle}>Complete Registered Participants ({allCombinedRegs.length})</h3>
                 </div>
                 <div style={S.tableResponsive}>
                   <table style={S.table}>
@@ -2508,7 +2627,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                       </tr>
                     </thead>
                     <tbody>
-                      {registrationsList
+                      {allCombinedRegs
                         .filter(r => {
                           const q = regSearch.toLowerCase().trim();
                           if (!q) return true;
@@ -2644,28 +2763,98 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
           {activeTab === 'offline-register-list' && (
             <div style={S.viewContainer}>
               <div style={S.viewHeader}>
-                <div style={{ display: 'flex', gap: '1rem', flex: 1, maxWidth: '650px' }}>
-                  <input 
-                    type="text" 
-                    placeholder="Search offline desk & paper import registrations by name, ticket code, phone..." 
-                    value={offlineRegSearch}
-                    onChange={(e) => setOfflineRegSearch(e.target.value)}
-                    style={S.searchInput}
-                  />
+                <div style={{ display: 'flex', gap: '0.75rem', flex: 1, maxWidth: '750px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ position: 'relative', flex: 1, minWidth: '280px' }}>
+                    <input 
+                      type="text" 
+                      placeholder="Search offline registrations by name, ticket code, phone, college, event..." 
+                      value={offlineRegSearch}
+                      onChange={(e) => setOfflineRegSearch(e.target.value)}
+                      style={{ ...S.searchInput, paddingLeft: '2.5rem' }}
+                    />
+                    <FaSearch style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fetchOfflineRegistrations();
+                      toast.success('Refreshed offline registrations from database');
+                    }}
+                    disabled={loadingOffline}
+                    style={{
+                      ...S.filterBtn,
+                      padding: '0.65rem 1.1rem',
+                      fontSize: '0.85rem',
+                      fontWeight: '700',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      cursor: 'pointer'
+                    }}
+                    title="Reload offline records from database"
+                  >
+                    <FaSyncAlt style={{ animation: loadingOffline ? 'spin 0.8s linear infinite' : 'none' }} />
+                    {loadingOffline ? 'Refreshing...' : 'Refresh DB'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSyncWithSupabase}
+                    disabled={isSyncingSupabase}
+                    style={{
+                      ...S.filterBtn,
+                      padding: '0.65rem 1.1rem',
+                      fontSize: '0.85rem',
+                      fontWeight: '700',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      cursor: 'pointer',
+                      background: isDark ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff',
+                      color: isDark ? '#93c5fd' : '#1d4ed8',
+                      borderColor: isDark ? 'rgba(59, 130, 246, 0.35)' : '#bfdbfe'
+                    }}
+                    title="Synchronize offline registrations with Supabase live tables"
+                  >
+                    <FaBolt style={{ animation: isSyncingSupabase ? 'pulse 0.8s infinite' : 'none' }} />
+                    {isSyncingSupabase ? 'Syncing...' : '⚡ Sync to Supabase'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('registration')}
+                    style={{
+                      ...S.primaryBtn,
+                      padding: '0.65rem 1.1rem',
+                      fontSize: '0.85rem',
+                      fontWeight: '700',
+                      background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <FaPlus /> New Offline Entry
+                  </button>
                 </div>
               </div>
 
               <div style={S.card}>
                 <div style={{ ...S.cardHeaderFlex, borderBottom: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', padding: '1.25rem 1.5rem' }}>
                   <div>
-                    <h3 style={S.cardTitle}>Offline Desk & Paper Import Registrations ({offlineRegs.length})</h3>
+                    <h3 style={S.cardTitle}>
+                      Offline Desk & Paper Import Registrations ({offlineRegistrationsList.length})
+                    </h3>
                     <span style={{ fontSize: '0.8rem', color: isDark ? '#9ca3af' : '#64748b' }}>
-                      Stores all physical paper scan imports & on-site desk registrations. Online registration remains 100% untouched.
+                      Stored in dedicated database table (<strong>public.offline_registrations</strong>). Online registrations remain 100% untouched.
                     </span>
                   </div>
-                  <span style={{ fontSize: '0.8rem', fontWeight: '800', background: 'rgba(249, 115, 22, 0.15)', color: '#f97316', padding: '0.35rem 0.85rem', borderRadius: '999px' }}>
-                    {offlineRegs.length} Total Offline Records
-                  </span>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: '800', background: 'rgba(249, 115, 22, 0.15)', color: '#f97316', padding: '0.35rem 0.85rem', borderRadius: '999px', border: '1px solid rgba(249, 115, 22, 0.3)' }}>
+                      {offlineRegistrationsList.length} Total Offline Records
+                    </span>
+                    <span style={{ fontSize: '0.8rem', fontWeight: '800', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', padding: '0.35rem 0.85rem', borderRadius: '999px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                      ₹{offlineRevenue} Desk Collection
+                    </span>
+                  </div>
                 </div>
 
                 <div style={S.tableResponsive}>
@@ -2678,29 +2867,29 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                         <th style={S.th}>College & Dept</th>
                         <th style={S.th}>Symposium Event</th>
                         <th style={S.th}>Fee Collected</th>
-                        <th style={{ ...S.th, textAlign: 'center' }}>Action / Print</th>
+                        <th style={{ ...S.th, textAlign: 'center' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {offlineRegs
+                      {offlineRegistrationsList
                         .filter(r => {
                           const q = offlineRegSearch.toLowerCase().trim();
                           if (!q) return true;
                           const name = (r.full_name || r.fullName || '').toLowerCase();
-                          const ticket = (r.ticket_code || r.registrationId || r.id || '').toString().toLowerCase();
+                          const ticket = (r.ticket_code || r.ticketCode || r.registrationId || r.id || '').toString().toLowerCase();
                           const phone = (r.phone || '').toLowerCase();
                           const college = (r.college || '').toLowerCase();
-                          const eventName = (r.eventName || eventsList.find(e => e.id === r.event_id)?.name || '').toLowerCase();
+                          const eventName = (r.eventName || eventsList.find(e => e.id === (r.event_id || r.eventId))?.name || '').toLowerCase();
                           return name.includes(q) || ticket.includes(q) || phone.includes(q) || college.includes(q) || eventName.includes(q);
                         })
                         .map((reg, i) => {
-                          const ticketCode = reg.ticket_code || reg.registrationId || reg.id || `#${i + 1}`;
+                          const ticketCode = reg.ticket_code || reg.ticketCode || reg.registrationId || reg.id || `#${i + 1}`;
                           const name = reg.full_name || reg.fullName || 'Anonymous';
-                          const evtName = reg.eventName || eventsList.find(e => e.id === reg.event_id)?.name || reg.event_id || 'Event';
+                          const evtName = reg.eventName || eventsList.find(e => e.id === (reg.event_id || reg.eventId))?.name || reg.event_id || 'Event';
                           const members = getTeamMembers(reg);
 
                           return (
-                            <tr key={i} style={S.tr}>
+                            <tr key={reg.id || ticketCode || i} style={S.tr}>
                               <td style={S.td}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <span style={{ ...S.idBadge, background: '#f97316', color: '#ffffff', fontWeight: '800' }}>
@@ -2729,6 +2918,15 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                                   ) : (
                                     <div style={S.tableSubText}>Individual Participant</div>
                                   )}
+                                  {members.length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '4px' }}>
+                                      {members.map((m, mIdx) => (
+                                        <span key={mIdx} style={{ background: isDark ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff', color: isDark ? '#93c5fd' : '#1d4ed8', border: '1px solid rgba(59, 130, 246, 0.25)', fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', fontWeight: '600' }}>
+                                          👤 {m}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               </td>
                               <td style={S.td}>
@@ -2753,37 +2951,78 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                               </td>
                               <td style={S.td}><span style={S.feeHighlight}>₹{getFee(reg)}</span></td>
                               <td style={{ ...S.td, textAlign: 'center' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handlePrintTicket(reg)}
-                                  style={{
-                                    ...S.filterBtn,
-                                    padding: '0.35rem 0.75rem',
-                                    fontSize: '0.78rem',
-                                    fontWeight: '700',
-                                    background: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5',
-                                    color: '#10b981',
-                                    border: '1px solid #10b981',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                  }}
-                                >
-                                  <FaPrint size={12} /> Print Ticket
-                                </button>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePrintTicket(reg)}
+                                    style={{
+                                      ...S.filterBtn,
+                                      padding: '0.35rem 0.75rem',
+                                      fontSize: '0.78rem',
+                                      fontWeight: '700',
+                                      background: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5',
+                                      color: '#10b981',
+                                      border: '1px solid #10b981',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Print Registration Ticket Receipt"
+                                  >
+                                    <FaPrint size={12} /> Print
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteOfflineRegistration(reg)}
+                                    style={{
+                                      ...S.filterBtn,
+                                      padding: '0.35rem 0.65rem',
+                                      fontSize: '0.78rem',
+                                      fontWeight: '700',
+                                      background: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2',
+                                      color: '#ef4444',
+                                      border: '1px solid #ef4444',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Delete offline record from separate DB table"
+                                  >
+                                    <FaTrash size={11} /> Delete
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
                         })}
-                      {offlineRegs.length === 0 && (
+                      {offlineRegistrationsList.length === 0 && (
                         <tr>
-                          <td colSpan="7" style={{ ...S.emptyState, padding: '3rem 1rem' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                              <FaBuilding size={36} style={{ color: '#f97316' }} />
-                              <div style={{ fontWeight: '800', color: isDark ? '#ffffff' : '#0f172a', fontSize: '1rem' }}>No Offline Desk Registrations Yet</div>
-                              <div style={{ fontSize: '0.82rem', color: isDark ? '#9ca3af' : '#64748b' }}>
-                                Import paper scans or confirm registrations in <strong>Offline Registration & Paper Import</strong> to store them here.
+                          <td colSpan="7" style={{ ...S.emptyState, padding: '3.5rem 1rem' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                              <FaBuilding size={42} style={{ color: '#f97316' }} />
+                              <div style={{ fontWeight: '800', color: isDark ? '#ffffff' : '#0f172a', fontSize: '1.1rem' }}>
+                                No Offline Desk Registrations In Database Yet
                               </div>
+                              <div style={{ fontSize: '0.85rem', color: isDark ? '#9ca3af' : '#64748b', maxWidth: '520px', lineHeight: '1.5', textAlign: 'center' }}>
+                                Registrations confirmed from physical paper form scans or the on-site registration desk are stored in the separate <strong>offline_registrations</strong> database table and displayed here.
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab('registration')}
+                                style={{
+                                  ...S.primaryBtn,
+                                  marginTop: '0.5rem',
+                                  background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  fontSize: '0.88rem'
+                                }}
+                              >
+                                <FaPlus /> Go to Offline Registration & Paper Import
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -2850,7 +3089,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                       {eventsList.map(evt => {
                         const isEsports = isEsportsEvent(evt);
                         if (isEsports) {
-                          const allBoC = registrationsList.filter(r => (r.event_id || r.eventId) === evt.id);
+                          const allBoC = allCombinedRegs.filter(r => (r.event_id || r.eventId) === evt.id);
                           const ffBoC = allBoC.filter(r => getRegEsportsGame(r) === 'FREE FIRE');
                           const bgmiBoC = allBoC.filter(r => getRegEsportsGame(r) === 'BGMI');
                           return (
@@ -2861,9 +3100,10 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                             </optgroup>
                           );
                         }
+                        const count = allCombinedRegs.filter(r => (r.event_id || r.eventId) === evt.id).length;
                         return (
                           <option key={evt.id} value={evt.id}>
-                            [{evt.category.toUpperCase()}] {evt.name}
+                            [{evt.category.toUpperCase()}] {evt.name} ({count})
                           </option>
                         );
                       })}
@@ -2894,20 +3134,43 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                     })
                     .filter(evt => partCategoryFilter === 'all' || evt.category === partCategoryFilter)
                     .map(evt => {
-                      const evtRegs = registrationsList.filter(r => (r.event_id || r.eventId) === evt.id);
+                      const evtAllRegs = allCombinedRegs.filter(r => (r.event_id || r.eventId) === evt.id);
+                      const evtOnlineRegs = evtAllRegs.filter(isOnlineRecord);
+                      const evtOfflineRegs = evtAllRegs.filter(r => !isOnlineRecord(r));
                       const isTech = evt.category === 'technical';
                       const isEsports = isEsportsEvent(evt);
-                      const teamsCount = evtRegs.filter(r => getTeamMembers(r).length > 0 || r.team_name || r.teamName).length;
-                      const ffRegs = isEsports ? evtRegs.filter(r => getRegEsportsGame(r) === 'FREE FIRE') : [];
-                      const bgmiRegs = isEsports ? evtRegs.filter(r => getRegEsportsGame(r) === 'BGMI') : [];
+                      const teamsCount = evtAllRegs.filter(r => getTeamMembers(r).length > 0 || r.team_name || r.teamName).length;
+                      const ffRegs = isEsports ? evtAllRegs.filter(r => getRegEsportsGame(r) === 'FREE FIRE') : [];
+                      const bgmiRegs = isEsports ? evtAllRegs.filter(r => getRegEsportsGame(r) === 'BGMI') : [];
+
+                      const currentTypeFilter = cardTypeFilters[evt.id] || 'ALL';
 
                       let cardGameFilter = bocGameFilter;
                       if (partEventFilter === 'nontech-05::FREE FIRE') cardGameFilter = 'FREE FIRE';
                       else if (partEventFilter === 'nontech-05::BGMI') cardGameFilter = 'BGMI';
 
-                      const displayedCardRegs = isEsports && cardGameFilter !== 'all'
-                        ? evtRegs.filter(r => getRegEsportsGame(r) === cardGameFilter)
-                        : evtRegs;
+                      let displayedCardRegs = evtAllRegs;
+                      if (currentTypeFilter === 'ONLINE') {
+                        displayedCardRegs = evtOnlineRegs;
+                      } else if (currentTypeFilter === 'OFFLINE') {
+                        displayedCardRegs = evtOfflineRegs;
+                      }
+
+                      if (isEsports && cardGameFilter !== 'all') {
+                        displayedCardRegs = displayedCardRegs.filter(r => getRegEsportsGame(r) === cardGameFilter);
+                      }
+
+                      if (partSearch.trim()) {
+                        const q = partSearch.toLowerCase().trim();
+                        displayedCardRegs = displayedCardRegs.filter(r => {
+                          const name = (r.full_name || r.fullName || '').toLowerCase();
+                          const ticket = (r.ticket_code || r.registrationId || r.id || '').toString().toLowerCase();
+                          const team = (r.team_name || r.teamName || '').toLowerCase();
+                          const phone = (r.phone || '').toLowerCase();
+                          const members = getTeamMembers(r).join(' ').toLowerCase();
+                          return name.includes(q) || ticket.includes(q) || team.includes(q) || phone.includes(q) || members.includes(q);
+                        });
+                      }
 
                       return (
                         <div key={evt.id} style={{ ...S.card, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -2940,10 +3203,10 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                             </div>
 
                             <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                              {/* Responsive Event Stats Summary Grid */}
+                              {/* Responsive Event Stats Summary Grid with Online & Offline Breakdown */}
                               <div style={{
                                 display: 'grid',
-                                gridTemplateColumns: isEsports ? 'repeat(auto-fit, minmax(70px, 1fr))' : 'repeat(3, 1fr)',
+                                gridTemplateColumns: isEsports ? 'repeat(auto-fit, minmax(70px, 1fr))' : '1.3fr 1fr 1.2fr',
                                 gap: '0.5rem',
                                 background: isDark ? '#1f2937' : '#f8fafc',
                                 padding: '0.75rem 0.85rem',
@@ -2953,7 +3216,12 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                               }}>
                                 <div>
                                   <span style={{ fontSize: '0.68rem', color: isDark ? '#9ca3af' : '#64748b', fontWeight: '700', textTransform: 'uppercase', display: 'block' }}>Total</span>
-                                  <div style={{ fontSize: '1.2rem', fontWeight: '800', color: isDark ? '#f9fafb' : '#0f172a' }}>{evtRegs.length}</div>
+                                  <div style={{ fontSize: '1.25rem', fontWeight: '800', color: isDark ? '#f9fafb' : '#0f172a', lineHeight: 1.1 }}>{evtAllRegs.length}</div>
+                                  <div style={{ fontSize: '0.68rem', fontWeight: '700', marginTop: '3px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                    <span style={{ color: '#3b82f6' }}>{evtOnlineRegs.length} On</span>
+                                    <span style={{ color: isDark ? '#6b7280' : '#94a3b8' }}>•</span>
+                                    <span style={{ color: '#ea580c' }}>{evtOfflineRegs.length} Off</span>
+                                  </div>
                                 </div>
                                 {isEsports ? (
                                   <>
@@ -2978,6 +3246,64 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                                 </div>
                               </div>
 
+                              {/* Card Registration Type Filter Tabs (All / Online / Offline) */}
+                              <div style={{ display: 'flex', gap: '5px', background: isDark ? '#111827' : '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setCardTypeFilters(prev => ({ ...prev, [evt.id]: 'ALL' }))}
+                                  style={{
+                                    flex: 1,
+                                    padding: '0.35rem 0.4rem',
+                                    fontSize: '0.72rem',
+                                    fontWeight: '700',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    background: currentTypeFilter === 'ALL' ? (isDark ? '#374151' : '#ffffff') : 'transparent',
+                                    color: currentTypeFilter === 'ALL' ? (isDark ? '#ffffff' : '#0f172a') : (isDark ? '#9ca3af' : '#64748b'),
+                                    boxShadow: currentTypeFilter === 'ALL' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                                  }}
+                                >
+                                  All ({evtAllRegs.length})
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setCardTypeFilters(prev => ({ ...prev, [evt.id]: 'ONLINE' }))}
+                                  style={{
+                                    flex: 1,
+                                    padding: '0.35rem 0.4rem',
+                                    fontSize: '0.72rem',
+                                    fontWeight: '700',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    background: currentTypeFilter === 'ONLINE' ? '#2563eb' : 'transparent',
+                                    color: currentTypeFilter === 'ONLINE' ? '#ffffff' : '#3b82f6',
+                                    boxShadow: currentTypeFilter === 'ONLINE' ? '0 1px 3px rgba(0,0,0,0.2)' : 'none'
+                                  }}
+                                >
+                                  🌐 Online ({evtOnlineRegs.length})
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setCardTypeFilters(prev => ({ ...prev, [evt.id]: 'OFFLINE' }))}
+                                  style={{
+                                    flex: 1,
+                                    padding: '0.35rem 0.4rem',
+                                    fontSize: '0.72rem',
+                                    fontWeight: '700',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    background: currentTypeFilter === 'OFFLINE' ? '#ea580c' : 'transparent',
+                                    color: currentTypeFilter === 'OFFLINE' ? '#ffffff' : '#ea580c',
+                                    boxShadow: currentTypeFilter === 'OFFLINE' ? '0 1px 3px rgba(0,0,0,0.2)' : 'none'
+                                  }}
+                                >
+                                  🏢 Offline ({evtOfflineRegs.length})
+                                </button>
+                              </div>
+
                               {/* Dedicated Esports Track Selector for Battle of Champions */}
                               {isEsports && (
                                 <div style={{ display: 'flex', gap: '6px', background: isDark ? '#111827' : '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
@@ -2997,7 +3323,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                                       boxShadow: cardGameFilter === 'all' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
                                     }}
                                   >
-                                    All ({evtRegs.length})
+                                    All ({evtAllRegs.length})
                                   </button>
                                   <button
                                     type="button"
@@ -3044,23 +3370,78 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                                   <span style={{ fontSize: '0.8rem', fontWeight: '700', color: isDark ? '#cbd5e1' : '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                                     {isEsports 
                                       ? `${cardGameFilter === 'all' ? 'Esports Squads' : (cardGameFilter === 'BGMI' ? '🎯 BGMI Squads' : '🔥 Free Fire Squads')} (${displayedCardRegs.length})` 
-                                      : `Participants & Team Members (${evtRegs.length})`}
+                                      : `Participants & Team Members (${displayedCardRegs.length})`}
                                   </span>
                                 </div>
 
-                                <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <div style={{ maxHeight: '230px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingRight: '4px' }}>
                                   {displayedCardRegs.map((reg, idx) => {
+                                    const isOffline = !isOnlineRecord(reg);
                                     const members = getTeamMembers(reg);
                                     const teamName = reg.team_name || reg.teamName;
                                     const game = isEsports ? getRegEsportsGame(reg) : null;
+                                    const ticketCode = reg.ticket_code || reg.registrationId || reg.id || `#${idx + 1}`;
 
                                     return (
-                                      <div key={idx} style={{ background: isDark ? '#1f2937' : '#f1f5f9', padding: '0.65rem 0.85rem', borderRadius: '8px', border: isDark ? '1px solid #374151' : '1px solid #e2e8f0' }}>
+                                      <div
+                                        key={reg.id || idx}
+                                        style={{
+                                          background: isOffline
+                                            ? (isDark ? 'rgba(234, 88, 12, 0.08)' : '#fff7ed')
+                                            : (isDark ? '#1f2937' : '#f1f5f9'),
+                                          padding: '0.65rem 0.85rem',
+                                          borderRadius: '8px',
+                                          border: isOffline
+                                            ? (isDark ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid #fed7aa')
+                                            : (isDark ? '1px solid #374151' : '1px solid #e2e8f0'),
+                                          borderLeft: isOffline
+                                            ? '4px solid #ea580c'
+                                            : '4px solid #3b82f6'
+                                        }}
+                                      >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                             <span style={{ fontWeight: '700', fontSize: '0.88rem', color: isDark ? '#f9fafb' : '#0f172a' }}>
                                               {reg.full_name || reg.fullName || 'Participant'}
                                             </span>
+                                            <span style={{
+                                              fontSize: '0.68rem',
+                                              fontWeight: '700',
+                                              padding: '0.1rem 0.4rem',
+                                              borderRadius: '4px',
+                                              background: isDark ? '#374151' : '#e2e8f0',
+                                              color: isDark ? '#cbd5e1' : '#475569'
+                                            }}>
+                                              #{ticketCode}
+                                            </span>
+                                            {isOffline ? (
+                                              <span style={{
+                                                background: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)',
+                                                color: '#ffffff',
+                                                padding: '0.12rem 0.45rem',
+                                                borderRadius: '6px',
+                                                fontSize: '0.65rem',
+                                                fontWeight: '800',
+                                                letterSpacing: '0.03em',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '3px'
+                                              }}>
+                                                <FaUserCheck size={9} /> OFFLINE DESK
+                                              </span>
+                                            ) : (
+                                              <span style={{
+                                                background: isDark ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff',
+                                                color: '#3b82f6',
+                                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                                padding: '0.1rem 0.4rem',
+                                                borderRadius: '6px',
+                                                fontSize: '0.65rem',
+                                                fontWeight: '700'
+                                              }}>
+                                                🌐 ONLINE
+                                              </span>
+                                            )}
                                             {isEsports && (
                                               <span style={{
                                                 background: game === 'BGMI' ? 'rgba(6, 182, 212, 0.15)' : 'rgba(249, 115, 22, 0.15)',
@@ -3107,17 +3488,31 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                                           </div>
                                         </div>
 
-                                        <div style={{ fontSize: '0.78rem', color: isDark ? '#9ca3af' : '#64748b', marginTop: '3px' }}>
-                                          {reg.college} • {reg.department}
+                                        <div style={{ fontSize: '0.76rem', color: isDark ? '#9ca3af' : '#64748b', marginTop: '3px' }}>
+                                          {reg.college || 'CAHCET'} • {reg.department || 'CSE'}
                                         </div>
 
                                         {members.length > 0 && (
-                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
-                                            <span style={{ fontSize: '0.72rem', color: isDark ? '#93c5fd' : '#1d4ed8', fontWeight: '700' }}>
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '5px' }}>
+                                            <span style={{ fontSize: '0.7rem', color: isDark ? '#93c5fd' : '#1d4ed8', fontWeight: '700' }}>
                                               Squad ({members.length + 1}):
                                             </span>
                                             {members.map((m, i) => (
-                                              <span key={i} style={{ background: isDark ? '#374151' : '#cbd5e1', color: isDark ? '#f9fafb' : '#0f172a', padding: '0.1rem 0.35rem', borderRadius: '4px', fontSize: '0.7rem' }}>
+                                              <span
+                                                key={i}
+                                                style={{
+                                                  background: isOffline
+                                                    ? (isDark ? 'rgba(234, 88, 12, 0.2)' : '#fed7aa')
+                                                    : (isDark ? '#374151' : '#cbd5e1'),
+                                                  color: isOffline
+                                                    ? (isDark ? '#fdba74' : '#9a3412')
+                                                    : (isDark ? '#f9fafb' : '#0f172a'),
+                                                  padding: '0.1rem 0.35rem',
+                                                  borderRadius: '4px',
+                                                  fontSize: '0.68rem',
+                                                  fontWeight: '600'
+                                                }}
+                                              >
                                                 {m}
                                               </span>
                                             ))}
@@ -3128,7 +3523,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                                   })}
                                   {displayedCardRegs.length === 0 && (
                                     <div style={{ color: isDark ? '#6b7280' : '#94a3b8', fontSize: '0.82rem', padding: '0.75rem', textAlign: 'center' }}>
-                                      No participants registered yet for this selection.
+                                      No {currentTypeFilter === 'OFFLINE' ? 'offline' : (currentTypeFilter === 'ONLINE' ? 'online' : '')} participants found for this selection.
                                     </div>
                                   )}
                                 </div>
@@ -3136,37 +3531,63 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                             </div>
                           </div>
 
-                          {/* Action Buttons: Export PDF, WhatsApp Roster, Copy & Send */}
-                          <div style={{ padding: '0.85rem 1.25rem', borderTop: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', background: isDark ? '#1a2234' : '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                          {/* Action Buttons: Export PDF, WhatsApp Roster, Copy, Send (All) & Dedicated Send Offline */}
+                          <div style={{ padding: '0.85rem 1.25rem', borderTop: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', background: isDark ? '#1a2234' : '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
                             <button
-                              onClick={() => handleExportPDF(evt, isEsports ? cardGameFilter : 'ALL')}
-                              style={{ ...S.filterBtn, flex: 1, minWidth: '105px', justifyContent: 'center', background: isDark ? '#1e3a8a' : '#eff6ff', color: isDark ? '#93c5fd' : '#1d4ed8', borderColor: isDark ? '#1e40af' : '#bfdbfe', fontSize: '0.78rem', padding: '0.5rem 0.6rem' }}
+                              onClick={() => handleExportPDF(evt, isEsports ? cardGameFilter : 'ALL', currentTypeFilter)}
+                              style={{ ...S.filterBtn, flex: 1, minWidth: '95px', justifyContent: 'center', background: isDark ? '#1e3a8a' : '#eff6ff', color: isDark ? '#93c5fd' : '#1d4ed8', borderColor: isDark ? '#1e40af' : '#bfdbfe', fontSize: '0.76rem', padding: '0.5rem 0.5rem' }}
+                              title="Export official printable participant PDF"
                             >
-                              <FaFilePdf size={12} /> {isEsports && cardGameFilter !== 'all' ? `Export ${cardGameFilter}` : 'Export PDF'}
+                              <FaFilePdf size={12} /> {currentTypeFilter === 'OFFLINE' ? 'PDF (Off)' : 'Export PDF'}
                             </button>
                             {isEsports && (
                               <>
                                 <button
-                                  onClick={() => handleShareRosterWhatsApp(evt, cardGameFilter)}
+                                  onClick={() => handleShareRosterWhatsApp(evt, cardGameFilter, '', currentTypeFilter)}
                                   title="Share Tournament Roster Sheet via WhatsApp"
-                                  style={{ ...S.filterBtn, flex: 1, minWidth: '105px', justifyContent: 'center', background: 'rgba(34, 197, 94, 0.12)', color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.3)', fontSize: '0.78rem', padding: '0.5rem 0.6rem' }}
+                                  style={{ ...S.filterBtn, flex: 1, minWidth: '90px', justifyContent: 'center', background: 'rgba(34, 197, 94, 0.12)', color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.3)', fontSize: '0.76rem', padding: '0.5rem 0.5rem' }}
                                 >
-                                  <FaWhatsapp size={12} /> WhatsApp
+                                  <FaWhatsapp size={12} /> WA Roster
                                 </button>
                                 <button
-                                  onClick={() => handleCopyRosterToClipboard(evt, cardGameFilter)}
+                                  onClick={() => handleCopyRosterToClipboard(evt, cardGameFilter, currentTypeFilter)}
                                   title="Copy formatted squad sheet to clipboard"
-                                  style={{ ...S.filterBtn, flex: 1, minWidth: '85px', justifyContent: 'center', background: isDark ? '#374151' : '#f1f5f9', color: isDark ? '#e2e8f0' : '#334155', fontSize: '0.78rem', padding: '0.5rem 0.6rem' }}
+                                  style={{ ...S.filterBtn, flex: 1, minWidth: '70px', justifyContent: 'center', background: isDark ? '#374151' : '#f1f5f9', color: isDark ? '#e2e8f0' : '#334155', fontSize: '0.76rem', padding: '0.5rem 0.5rem' }}
                                 >
                                   <FaCopy size={11} /> Copy
                                 </button>
                               </>
                             )}
                             <button
-                              onClick={() => handleOpenSendModal(evt)}
-                              style={{ ...S.primaryBtn, flex: 1, minWidth: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
+                              onClick={() => handleOpenSendModal(evt, 'ALL')}
+                              title="Dispatch participant list to Event Coordinator"
+                              style={{ ...S.primaryBtn, flex: 1, minWidth: '85px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '0.78rem', padding: '0.5rem 0.6rem' }}
                             >
-                              <FaPaperPlane size={11} /> Send
+                              <FaPaperPlane size={11} /> Send All
+                            </button>
+                            <button
+                              onClick={() => handleOpenSendModal(evt, 'OFFLINE')}
+                              title="Dispatch ONLY Offline Desk Registrations to Event Coordinator"
+                              style={{
+                                flex: 1,
+                                minWidth: '125px',
+                                background: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '8px',
+                                boxShadow: '0 2px 5px rgba(234, 88, 12, 0.28)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '5px',
+                                fontSize: '0.78rem',
+                                fontWeight: '700',
+                                padding: '0.5rem 0.65rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease'
+                              }}
+                            >
+                              <FaPaperPlane size={11} /> Send Offline ({evtOfflineRegs.length})
                             </button>
                           </div>
                         </div>
@@ -3322,214 +3743,279 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
           )}
 
           {/* ==================== SEND TO EVENT COORDINATOR MODAL ==================== */}
-          {isSendModalOpen && sendTargetEvent && (
-            <div style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'rgba(0, 0, 0, 0.65)',
-              backdropFilter: 'blur(4px)',
-              zIndex: 9999,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '1rem'
-            }}>
-              <div style={{
-                background: isDark ? '#111827' : '#ffffff',
-                borderRadius: '20px',
-                width: '100%',
-                maxWidth: '520px',
-                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
-                border: isDark ? '1px solid #374151' : '1px solid #e2e8f0',
-                overflow: 'hidden'
-              }}>
-                <div style={{ padding: '1.5rem 1.75rem', borderBottom: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: isDark ? '#f9fafb' : '#0f172a' }}>
-                      Send Participant List
-                    </h3>
-                    <span style={{ fontSize: '0.8rem', color: isDark ? '#9ca3af' : '#64748b' }}>
-                      Event: <strong>{sendTargetEvent.name}</strong>
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setIsSendModalOpen(false)}
-                    style={{ background: 'transparent', border: 'none', color: isDark ? '#9ca3af' : '#64748b', cursor: 'pointer', fontSize: '1.1rem' }}
-                  >
-                    <FaTimes />
-                  </button>
-                </div>
+          {isSendModalOpen && sendTargetEvent && (() => {
+            const modalAll = allCombinedRegs.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id);
+            const modalOnline = modalAll.filter(isOnlineRecord);
+            const modalOffline = modalAll.filter(r => !isOnlineRecord(r));
 
-                <div style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  {/* Esports Division Scope Selector (for Battle of Champions) */}
-                  {isEsportsEvent(sendTargetEvent) && (
+            let effectiveSendRegs = modalAll;
+            if (sendTypeScope === 'OFFLINE') {
+              effectiveSendRegs = modalOffline;
+            } else if (sendTypeScope === 'ONLINE') {
+              effectiveSendRegs = modalOnline;
+            }
+
+            if (isEsportsEvent(sendTargetEvent) && sendGameScope !== 'ALL') {
+              effectiveSendRegs = effectiveSendRegs.filter(r => getRegEsportsGame(r) === sendGameScope);
+            }
+
+            return (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0, 0, 0, 0.65)',
+                backdropFilter: 'blur(4px)',
+                zIndex: 9999,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '1rem'
+              }}>
+                <div style={{
+                  background: isDark ? '#111827' : '#ffffff',
+                  borderRadius: '20px',
+                  width: '100%',
+                  maxWidth: '540px',
+                  boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
+                  border: isDark ? '1px solid #374151' : '1px solid #e2e8f0',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{ padding: '1.5rem 1.75rem', borderBottom: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: isDark ? '#f9fafb' : '#0f172a' }}>
+                        {sendTypeScope === 'OFFLINE' ? '🏢 Dispatch Offline Registrations' : 'Send Participant List'}
+                      </h3>
+                      <span style={{ fontSize: '0.8rem', color: isDark ? '#9ca3af' : '#64748b' }}>
+                        Event: <strong>{sendTargetEvent.name}</strong>
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setIsSendModalOpen(false)}
+                      style={{ background: 'transparent', border: 'none', color: isDark ? '#9ca3af' : '#64748b', cursor: 'pointer', fontSize: '1.1rem' }}
+                    >
+                      <FaTimes />
+                    </button>
+                  </div>
+
+                  <div style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    {/* Registration Type Scope Selector (All / Online / Offline) */}
                     <div style={{ background: isDark ? 'rgba(30, 41, 59, 0.7)' : '#f8fafc', padding: '1rem', borderRadius: '12px', border: isDark ? '1px solid #374151' : '1px solid #e2e8f0' }}>
                       <label style={{ ...S.label, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.5rem' }}>
-                        <FaGamepad size={13} style={{ color: '#ea580c' }} /> Select Esports Tournament Division to Dispatch *
+                        <FaPaperPlane size={12} style={{ color: sendTypeScope === 'OFFLINE' ? '#ea580c' : '#3b82f6' }} /> Select Registration Scope to Dispatch *
                       </label>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
                         {[
-                          { id: 'ALL', label: 'All Tracks', count: registrationsList.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id).length, bg: '#3b82f6' },
-                          { id: 'FREE FIRE', label: '🔥 Free Fire', count: registrationsList.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id && getRegEsportsGame(r) === 'FREE FIRE').length, bg: '#ea580c' },
-                          { id: 'BGMI', label: '🎯 BGMI', count: registrationsList.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id && getRegEsportsGame(r) === 'BGMI').length, bg: '#0891b2' }
+                          { id: 'ALL', label: 'All Combined', count: modalAll.length, bg: '#3b82f6', icon: '📋' },
+                          { id: 'ONLINE', label: 'Online Only', count: modalOnline.length, bg: '#2563eb', icon: '🌐' },
+                          { id: 'OFFLINE', label: 'Offline Only', count: modalOffline.length, bg: '#ea580c', icon: '🏢' }
                         ].map(tab => (
                           <button
                             key={tab.id}
                             type="button"
-                            onClick={() => setSendGameScope(tab.id)}
+                            onClick={() => setSendTypeScope(tab.id)}
                             style={{
                               padding: '0.55rem 0.5rem',
                               borderRadius: '8px',
-                              border: sendGameScope === tab.id ? `2px solid ${tab.bg}` : (isDark ? '1px solid #374151' : '1px solid #cbd5e1'),
-                              background: sendGameScope === tab.id ? (isDark ? '#1e293b' : '#eff6ff') : (isDark ? '#111827' : '#ffffff'),
+                              border: sendTypeScope === tab.id ? `2px solid ${tab.bg}` : (isDark ? '1px solid #374151' : '1px solid #cbd5e1'),
+                              background: sendTypeScope === tab.id ? (isDark ? '#1e293b' : '#eff6ff') : (isDark ? '#111827' : '#ffffff'),
                               cursor: 'pointer',
                               textAlign: 'center'
                             }}
                           >
-                            <div style={{ fontSize: '0.75rem', fontWeight: '800', color: sendGameScope === tab.id ? (isDark ? '#ffffff' : '#0f172a') : (isDark ? '#9ca3af' : '#64748b') }}>
-                              {tab.label}
+                            <div style={{ fontSize: '0.74rem', fontWeight: '800', color: sendTypeScope === tab.id ? (isDark ? '#ffffff' : '#0f172a') : (isDark ? '#9ca3af' : '#64748b') }}>
+                              {tab.icon} {tab.label}
                             </div>
                             <div style={{ fontSize: '0.85rem', fontWeight: '800', color: tab.bg, marginTop: '2px' }}>
-                              {tab.count} squads
+                              {tab.count} entries
                             </div>
                           </button>
                         ))}
                       </div>
-
-                      {/* 1-Click WhatsApp & Clipboard Sharing Tools */}
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: isDark ? '1px solid #374151' : '1px solid #e2e8f0' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleShareRosterWhatsApp(sendTargetEvent, sendGameScope, (coordinatorsList.find(c => c.name === selectedCoordName)?.phone || ''))}
-                          style={{
-                            flex: 1,
-                            background: '#22c55e',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: '8px',
-                            padding: '0.45rem 0.75rem',
-                            fontSize: '0.78rem',
-                            fontWeight: '700',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px'
-                          }}
-                        >
-                          <FaWhatsapp size={13} /> Share on WhatsApp
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyRosterToClipboard(sendTargetEvent, sendGameScope)}
-                          style={{
-                            flex: 1,
-                            background: isDark ? '#374151' : '#f1f5f9',
-                            color: isDark ? '#f9fafb' : '#0f172a',
-                            border: isDark ? '1px solid #4b5563' : '1px solid #cbd5e1',
-                            borderRadius: '8px',
-                            padding: '0.45rem 0.75rem',
-                            fontSize: '0.78rem',
-                            fontWeight: '700',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px'
-                          }}
-                        >
-                          <FaCopy size={12} /> Copy Roster Text
-                        </button>
-                      </div>
                     </div>
-                  )}
 
-                  <div style={S.modalInputGroup}>
-                    <label style={S.label}>Select Event Coordinator Account / Name *</label>
-                    {coordinatorsList.length > 0 ? (
-                      <select
-                        value={selectedCoordName}
-                        onChange={(e) => setSelectedCoordName(e.target.value)}
-                        style={S.select}
-                      >
-                        {coordinatorsList.map((c, i) => (
-                          <option key={c.id || i} value={c.name}>
-                            {c.name} {c.game ? `[${c.game}] ` : ''}{c.assignedEvents?.length ? `(${c.assignedEvents.join(', ')})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        placeholder="Enter Event Coordinator Username / Name"
-                        value={selectedCoordName}
-                        onChange={(e) => setSelectedCoordName(e.target.value)}
-                        style={S.input}
-                        required
-                      />
+                    {/* Esports Division Scope Selector (for Battle of Champions) */}
+                    {isEsportsEvent(sendTargetEvent) && (
+                      <div style={{ background: isDark ? 'rgba(30, 41, 59, 0.7)' : '#f8fafc', padding: '1rem', borderRadius: '12px', border: isDark ? '1px solid #374151' : '1px solid #e2e8f0' }}>
+                        <label style={{ ...S.label, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.5rem' }}>
+                          <FaGamepad size={13} style={{ color: '#ea580c' }} /> Select Esports Tournament Division *
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                          {[
+                            { id: 'ALL', label: 'All Tracks', count: (sendTypeScope === 'OFFLINE' ? modalOffline : (sendTypeScope === 'ONLINE' ? modalOnline : modalAll)).length, bg: '#3b82f6' },
+                            { id: 'FREE FIRE', label: '🔥 Free Fire', count: (sendTypeScope === 'OFFLINE' ? modalOffline : (sendTypeScope === 'ONLINE' ? modalOnline : modalAll)).filter(r => getRegEsportsGame(r) === 'FREE FIRE').length, bg: '#ea580c' },
+                            { id: 'BGMI', label: '🎯 BGMI', count: (sendTypeScope === 'OFFLINE' ? modalOffline : (sendTypeScope === 'ONLINE' ? modalOnline : modalAll)).filter(r => getRegEsportsGame(r) === 'BGMI').length, bg: '#0891b2' }
+                          ].map(tab => (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              onClick={() => setSendGameScope(tab.id)}
+                              style={{
+                                padding: '0.55rem 0.5rem',
+                                borderRadius: '8px',
+                                border: sendGameScope === tab.id ? `2px solid ${tab.bg}` : (isDark ? '1px solid #374151' : '1px solid #cbd5e1'),
+                                background: sendGameScope === tab.id ? (isDark ? '#1e293b' : '#eff6ff') : (isDark ? '#111827' : '#ffffff'),
+                                cursor: 'pointer',
+                                textAlign: 'center'
+                              }}
+                            >
+                              <div style={{ fontSize: '0.75rem', fontWeight: '800', color: sendGameScope === tab.id ? (isDark ? '#ffffff' : '#0f172a') : (isDark ? '#9ca3af' : '#64748b') }}>
+                                {tab.label}
+                              </div>
+                              <div style={{ fontSize: '0.85rem', fontWeight: '800', color: tab.bg, marginTop: '2px' }}>
+                                {tab.count} squads
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     )}
-                  </div>
 
-                  <div style={{ background: isDark ? '#1f2937' : '#f8fafc', padding: '1rem', borderRadius: '10px', border: isDark ? '1px solid #374151' : '1px solid #e2e8f0' }}>
-                    <span style={{ fontSize: '0.82rem', color: isDark ? '#cbd5e1' : '#475569', fontWeight: '600' }}>
-                      Summary to Dispatch:
-                    </span>
-                    <ul style={{ margin: '0.4rem 0 0 1.2rem', padding: 0, fontSize: '0.82rem', color: isDark ? '#9ca3af' : '#64748b' }}>
-                      <li>Event: <strong>{sendTargetEvent.name}</strong> ({sendTargetEvent.category.toUpperCase()})</li>
-                      {isEsportsEvent(sendTargetEvent) && (
+                    {/* 1-Click WhatsApp & Clipboard Sharing Tools */}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleShareRosterWhatsApp(sendTargetEvent, sendGameScope, (coordinatorsList.find(c => c.name === selectedCoordName)?.phone || ''), sendTypeScope)}
+                        style={{
+                          flex: 1,
+                          background: '#22c55e',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '0.55rem 0.75rem',
+                          fontSize: '0.78rem',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <FaWhatsapp size={13} /> Share on WhatsApp
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyRosterToClipboard(sendTargetEvent, sendGameScope, sendTypeScope)}
+                        style={{
+                          flex: 1,
+                          background: isDark ? '#374151' : '#f1f5f9',
+                          color: isDark ? '#f9fafb' : '#0f172a',
+                          border: isDark ? '1px solid #4b5563' : '1px solid #cbd5e1',
+                          borderRadius: '8px',
+                          padding: '0.55rem 0.75rem',
+                          fontSize: '0.78rem',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <FaCopy size={12} /> Copy Roster Text
+                      </button>
+                    </div>
+
+                    <div style={S.modalInputGroup}>
+                      <label style={S.label}>Select Event Coordinator Account / Name *</label>
+                      {coordinatorsList.length > 0 ? (
+                        <select
+                          value={selectedCoordName}
+                          onChange={(e) => setSelectedCoordName(e.target.value)}
+                          style={S.select}
+                        >
+                          {coordinatorsList.map((c, i) => (
+                            <option key={c.id || i} value={c.name}>
+                              {c.name} {c.game ? `[${c.game}] ` : ''}{c.assignedEvents?.length ? `(${c.assignedEvents.join(', ')})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="Enter Event Coordinator Username / Name"
+                          value={selectedCoordName}
+                          onChange={(e) => setSelectedCoordName(e.target.value)}
+                          style={S.input}
+                          required
+                        />
+                      )}
+                    </div>
+
+                    <div style={{ background: isDark ? '#1f2937' : '#f8fafc', padding: '1rem', borderRadius: '10px', border: isDark ? '1px solid #374151' : '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: '0.82rem', color: isDark ? '#cbd5e1' : '#475569', fontWeight: '700' }}>
+                        Summary to Dispatch:
+                      </span>
+                      <ul style={{ margin: '0.4rem 0 0 1.2rem', padding: 0, fontSize: '0.82rem', color: isDark ? '#9ca3af' : '#64748b' }}>
+                        <li>Event: <strong>{sendTargetEvent.name}</strong> ({sendTargetEvent.category.toUpperCase()})</li>
                         <li>
-                          Esports Division: <strong style={{ color: sendGameScope === 'FREE FIRE' ? '#ea580c' : (sendGameScope === 'BGMI' ? '#0891b2' : '#3b82f6') }}>
-                            {sendGameScope === 'ALL' ? 'All Divisions (Free Fire + BGMI)' : `${sendGameScope} Only`}
+                          Registration Scope: <strong style={{ color: sendTypeScope === 'OFFLINE' ? '#ea580c' : (sendTypeScope === 'ONLINE' ? '#3b82f6' : '#10b981') }}>
+                            {sendTypeScope === 'OFFLINE' ? '🏢 OFFLINE DESK REGISTRATIONS ONLY' : (sendTypeScope === 'ONLINE' ? '🌐 ONLINE REGISTRATIONS ONLY' : '📋 ALL COMBINED')}
                           </strong>
                         </li>
-                      )}
-                      <li>
-                        Total Entries to Send: <strong>
-                          {isEsportsEvent(sendTargetEvent) && sendGameScope !== 'ALL'
-                            ? registrationsList.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id && getRegEsportsGame(r) === sendGameScope).length
-                            : registrationsList.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id).length}
-                        </strong>
-                      </li>
-                      <li>Target Recipient: <strong>{selectedCoordName || 'Coordinator'}</strong></li>
-                      <li>Includes complete squad rosters, ticket IDs, and captain contact numbers.</li>
-                    </ul>
-                  </div>
+                        {isEsportsEvent(sendTargetEvent) && (
+                          <li>
+                            Esports Division: <strong style={{ color: sendGameScope === 'FREE FIRE' ? '#ea580c' : (sendGameScope === 'BGMI' ? '#0891b2' : '#3b82f6') }}>
+                              {sendGameScope === 'ALL' ? 'All Divisions (Free Fire + BGMI)' : `${sendGameScope} Only`}
+                            </strong>
+                          </li>
+                        )}
+                        <li>
+                          Total Entries to Send: <strong>{effectiveSendRegs.length}</strong>
+                        </li>
+                        <li>Target Recipient: <strong>{selectedCoordName || 'Coordinator'}</strong></li>
+                      </ul>
 
-                  <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-                    <button
-                      type="button"
-                      onClick={() => setIsSendModalOpen(false)}
-                      style={{ ...S.filterBtn, flex: 1, justifyContent: 'center', padding: '0.75rem' }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSendingList}
-                      onClick={handleConfirmSendList}
-                      style={{
-                        ...S.primaryBtn,
-                        flex: 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        padding: '0.75rem',
-                        background: isEsportsEvent(sendTargetEvent) && sendGameScope === 'FREE FIRE'
-                          ? '#ea580c'
-                          : (isEsportsEvent(sendTargetEvent) && sendGameScope === 'BGMI' ? '#0891b2' : S.primaryBtn.background)
-                      }}
-                    >
-                      <FaPaperPlane size={12} /> {isSendingList ? 'Sending...' : (isEsportsEvent(sendTargetEvent) && sendGameScope !== 'ALL' ? `Confirm & Send ${sendGameScope}` : 'Confirm & Send List')}
-                    </button>
+                      {effectiveSendRegs.length > 0 && (
+                        <div style={{ marginTop: '0.65rem', maxHeight: '110px', overflowY: 'auto', background: isDark ? '#111827' : '#ffffff', padding: '6px 8px', borderRadius: '6px', border: isDark ? '1px solid #374151' : '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {effectiveSendRegs.map((r, i) => (
+                            <div key={i} style={{ fontSize: '0.72rem', display: 'flex', justifyContent: 'space-between', color: isDark ? '#cbd5e1' : '#334155' }}>
+                              <span>#{r.ticket_code || r.registrationId || r.id} — <strong>{r.full_name || r.fullName}</strong></span>
+                              <span style={{ color: !isOnlineRecord(r) ? '#ea580c' : '#3b82f6', fontWeight: '700' }}>
+                                {!isOnlineRecord(r) ? '🏢 Offline' : '🌐 Online'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setIsSendModalOpen(false)}
+                        style={{ ...S.filterBtn, flex: 1, justifyContent: 'center', padding: '0.75rem' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isSendingList}
+                        onClick={handleConfirmSendList}
+                        style={{
+                          ...S.primaryBtn,
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          padding: '0.75rem',
+                          background: sendTypeScope === 'OFFLINE'
+                            ? 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)'
+                            : (isEsportsEvent(sendTargetEvent) && sendGameScope === 'BGMI' ? '#0891b2' : S.primaryBtn.background)
+                        }}
+                      >
+                        <FaPaperPlane size={12} /> {isSendingList ? 'Sending...' : (sendTypeScope === 'OFFLINE' ? `Confirm & Send Offline (${effectiveSendRegs.length})` : `Confirm & Send List (${effectiveSendRegs.length})`)}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ==================== 6. IMPORTED DOCUMENT PREVIEW MODAL ==================== */}
           {showDocModal && importedDocument && (

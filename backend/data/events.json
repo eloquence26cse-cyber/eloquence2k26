@@ -248,7 +248,7 @@
     ],
     "guidelines": {
       "esports_config": {
-        "BGMI": {
+        "_b_g_m_i": {
           "fee": "₹200 per squad",
           "badge": "Smartphone / iPad • 4-Player Squad",
           "rules": [
@@ -261,7 +261,7 @@
             "Players must bring fully charged devices, chargers, and personal wired/wireless earphones."
           ],
           "title": "BGMI",
-          "venue": "Mech dept Drawing Hall",
+          "venue": "IT DRAWING HALL",
           "rounds": [
             {
               "desc": "Squads drop across Erangel. Survival placement and finish points rank the leaderboard.",
@@ -275,9 +275,11 @@
             }
           ],
           "timing": "10:40 AM TO 12:40 PM",
+          "is_team": true,
           "tagline": "Battlegrounds Mobile India Squad Championship",
+          "fee_type": "per_squad",
           "subtitle": "BGMI Custom Room Tournament",
-          "teamSize": "Only Squad Match (4 Players)",
+          "team_size": "Only Squad Match (4 Players)",
           "highlights": [
             "TPP Squad Mode",
             "Erangel & Miramar",
@@ -285,9 +287,9 @@
           ],
           "description": "Premier squad tactical tournament on classic custom tournament rooms. Coordinate tactical rotations, zone dominance, and precise team assaults across Erangel and Miramar to claim the Winner Winner Chicken Dinner!"
         },
-        "FREE FIRE": {
+        "_f_r_e_e _f_i_r_e": {
           "fee": "₹200 per squad",
-          "badge": "Mobile Devices Only • 4-Player Squad",
+          "badge": "Mobile Only • 4-Player Squad",
           "rules": [
             "Strictly 4 players per squad (mobile phones only, no iPads, tablets, or emulators).",
             "Official Free Fire custom room matches played on Bermuda and Purgatory maps.",
@@ -298,7 +300,7 @@
             "Participants must bring their own charged mobile devices, earphones, and active internet connection."
           ],
           "title": "Free Fire",
-          "venue": "Mech dept Drawing Hall",
+          "venue": "CSE DRAWING HALL",
           "rounds": [
             {
               "desc": "All squads drop into Bermuda. Placements and kill points determine the top advancing teams.",
@@ -312,15 +314,17 @@
             }
           ],
           "timing": "10:40 AM TO 12:40 PM",
+          "is_team": true,
           "tagline": "Mobile Battle Royale Clash",
+          "fee_type": "per_squad",
           "subtitle": "Free Fire Custom Room Tournament",
-          "teamSize": "Only Squad Match (4 Players)",
+          "team_size": "Only Squad Match (4 Players)",
           "highlights": [
             "Gun Attributes OFF",
             "Bermuda & Purgatory",
             "Flat ₹200 / Squad"
           ],
-          "description": "Drop into Bermuda and Purgatory in the ultimate mobile survival shootout. Gun attributes are strictly turned OFF for an authentic, high-stakes tactical esports tournament where pure positioning, clutch aim, and teamwork crown the squad champions!"
+          "description": "High-octane mobile battle royale showdown on custom symposium rooms. Drop into Bermuda and Purgatory with your 4-player squad, out-survive opponents with superior tactics, gunplay, and teamwork to seize the Booyah!"
         }
       }
     },
@@ -330,7 +334,7 @@
       "Flat ₹200 per squad"
     ],
     "created_at": "2026-09-16T10:16:14.505182+00:00",
-    "updated_at": "2026-09-25T08:55:22.651+00:00",
+    "updated_at": "2026-09-25T09:38:33.679+00:00",
     "venue_image": ""
   },
   {

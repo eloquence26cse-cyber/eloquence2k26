@@ -1,77 +1,15 @@
 -- =========================================================================
--- ELOQUENCE 2026: DATABASE TABLES SETUP (Supabase / PostgreSQL)
--- Tables: certificates, attendance_logs, event_scores
+-- ELOQUENCE 2026: OFFLINE REGISTRATIONS SEPARATE TABLE SETUP
+-- Database: Supabase / PostgreSQL (public schema)
+-- Project Dashboard: https://supabase.com/dashboard/project/dfdugnahbtazkgdkqebs/sql
 -- =========================================================================
 
--- 1. CERTIFICATES TABLE
-CREATE TABLE IF NOT EXISTS certificates (
-  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  ticket_code TEXT NOT NULL,
-  participant_name TEXT NOT NULL,
-  college TEXT,
-  event_id TEXT,
-  event_name TEXT NOT NULL,
-  position TEXT DEFAULT 'Participant',
-  certificate_url TEXT,
-  issued_by TEXT DEFAULT 'Admin',
-  issued_at TIMESTAMPTZ DEFAULT NOW(),
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- Enable UUID extension if not enabled
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. ATTENDANCE LOGS TABLE
-CREATE TABLE IF NOT EXISTS attendance_logs (
-  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  ticket_code TEXT NOT NULL,
-  event_id TEXT NOT NULL,
-  event_name TEXT,
-  participant_name TEXT NOT NULL,
-  verified_by TEXT NOT NULL DEFAULT 'Event Coordinator',
-  check_in_time TIMESTAMPTZ DEFAULT NOW(),
-  status TEXT DEFAULT 'PRESENT',
-  method TEXT DEFAULT 'QR_SCAN',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 3. EVENT SCORES TABLE
-CREATE TABLE IF NOT EXISTS event_scores (
-  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  event_id TEXT NOT NULL,
-  event_name TEXT,
-  ticket_code TEXT NOT NULL,
-  participant_name TEXT NOT NULL,
-  team_name TEXT,
-  round_number INT DEFAULT 1,
-  criteria_1_score NUMERIC DEFAULT 0,
-  criteria_2_score NUMERIC DEFAULT 0,
-  criteria_3_score NUMERIC DEFAULT 0,
-  total_score NUMERIC DEFAULT 0,
-  evaluator_name TEXT,
-  comments TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 4. GRANT ACCESS & PERMISSIONS
-GRANT ALL ON TABLE certificates TO anon, authenticated, service_role, postgres;
-GRANT ALL ON TABLE attendance_logs TO anon, authenticated, service_role, postgres;
-GRANT ALL ON TABLE event_scores TO anon, authenticated, service_role, postgres;
-
--- 5. ROW LEVEL SECURITY (RLS) POLICIES
-ALTER TABLE certificates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE attendance_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE event_scores ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Public full access on certificates" ON certificates;
-CREATE POLICY "Public full access on certificates" ON certificates FOR ALL USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Public full access on attendance_logs" ON attendance_logs;
-CREATE POLICY "Public full access on attendance_logs" ON attendance_logs FOR ALL USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Public full access on event_scores" ON event_scores;
-CREATE POLICY "Public full access on event_scores" ON event_scores FOR ALL USING (true) WITH CHECK (true);
-
--- 6. OFFLINE REGISTRATIONS SEPARATE TABLE
+-- -------------------------------------------------------------------------
+-- 1. OFFLINE REGISTRATIONS TABLE
+-- -------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.offline_registrations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     ticket_code TEXT UNIQUE NOT NULL,
@@ -102,6 +40,7 @@ CREATE TABLE IF NOT EXISTS public.offline_registrations (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Ensure all columns exist (idempotent ALTERs)
 ALTER TABLE public.offline_registrations ADD COLUMN IF NOT EXISTS whatsapp TEXT;
 ALTER TABLE public.offline_registrations ADD COLUMN IF NOT EXISTS team_members JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.offline_registrations ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'ON_SITE_DESK';
@@ -112,6 +51,9 @@ ALTER TABLE public.offline_registrations ADD COLUMN IF NOT EXISTS verified_at TI
 ALTER TABLE public.offline_registrations ADD COLUMN IF NOT EXISTS verified_by TEXT;
 ALTER TABLE public.offline_registrations ADD COLUMN IF NOT EXISTS notes TEXT;
 
+-- -------------------------------------------------------------------------
+-- 2. OFFLINE REGISTRATION MEMBERS TABLE
+-- -------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.offline_registration_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     registration_id UUID REFERENCES public.offline_registrations(id) ON DELETE CASCADE,
@@ -126,6 +68,16 @@ CREATE TABLE IF NOT EXISTS public.offline_registration_members (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.offline_registration_members ADD COLUMN IF NOT EXISTS ticket_code TEXT;
+ALTER TABLE public.offline_registration_members ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.offline_registration_members ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.offline_registration_members ADD COLUMN IF NOT EXISTS college TEXT;
+ALTER TABLE public.offline_registration_members ADD COLUMN IF NOT EXISTS department TEXT;
+ALTER TABLE public.offline_registration_members ADD COLUMN IF NOT EXISTS year TEXT;
+
+-- -------------------------------------------------------------------------
+-- 3. PERMISSIONS & ROW LEVEL SECURITY (RLS)
+-- -------------------------------------------------------------------------
 GRANT ALL ON TABLE public.offline_registrations TO anon, authenticated, service_role, postgres;
 GRANT ALL ON TABLE public.offline_registration_members TO anon, authenticated, service_role, postgres;
 
@@ -138,3 +90,18 @@ CREATE POLICY "Public full access on offline_registrations" ON public.offline_re
 DROP POLICY IF EXISTS "Public full access on offline_registration_members" ON public.offline_registration_members;
 CREATE POLICY "Public full access on offline_registration_members" ON public.offline_registration_members FOR ALL USING (true) WITH CHECK (true);
 
+-- -------------------------------------------------------------------------
+-- 4. ALIAS VIEWS FOR FLEXIBLE NAMING (SINGULAR / PLURAL & CAMELCASE)
+-- -------------------------------------------------------------------------
+CREATE OR REPLACE VIEW public.offline_registrations_member AS 
+SELECT * FROM public.offline_registration_members;
+
+CREATE OR REPLACE VIEW public."Offline_registrations" AS 
+SELECT * FROM public.offline_registrations;
+
+CREATE OR REPLACE VIEW public."Offline_registrations_member" AS 
+SELECT * FROM public.offline_registration_members;
+
+GRANT ALL ON public.offline_registrations_member TO anon, authenticated, service_role, postgres;
+GRANT ALL ON public."Offline_registrations" TO anon, authenticated, service_role, postgres;
+GRANT ALL ON public."Offline_registrations_member" TO anon, authenticated, service_role, postgres;

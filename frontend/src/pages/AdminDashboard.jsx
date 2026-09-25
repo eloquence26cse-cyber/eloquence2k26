@@ -75,6 +75,7 @@ import {
 } from 'react-icons/fa';
 import defaultEvents from '../data/events.js';
 import rulesData from '../data/rules.js';
+import { DEFAULT_ESPORTS_CONFIG } from '../data/esportsConfig.js';
 import { getEventBanner, defaultEventImages } from '../data/eventImages.js';
 import { getApiUrl } from '../config/api';
 import ParticipantVerifier from '../components/ParticipantVerifier.jsx';
@@ -311,6 +312,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
   const [eventVenueImage, setEventVenueImage] = useState('');
   const [eventVenueImagePreview, setEventVenueImagePreview] = useState('');
   const [isUploadingVenueImage, setIsUploadingVenueImage] = useState(false);
+  const [isSavingEvent, setIsSavingEvent] = useState(false);
   const venueFileInputRef = useRef(null);
 
   // Event Rules State
@@ -322,6 +324,14 @@ export default function AdminDashboard({ token, user, onLogout }) {
   const [eventRounds, setEventRounds] = useState([]);
   const [roundsInputMode, setRoundsInputMode] = useState('list'); // 'list' | 'bulk'
   const [bulkRoundsText, setBulkRoundsText] = useState('');
+
+  // Battle of Champions (Esports) Edit State
+  const [editingEsportsGame, setEditingEsportsGame] = useState('FREE FIRE'); // 'FREE FIRE' | 'BGMI'
+  const [eventEsportsConfig, setEventEsportsConfig] = useState(null);
+  const [esportsRulesInputMode, setEsportsRulesInputMode] = useState('list'); // 'list' | 'bulk'
+  const [esportsBulkRulesText, setEsportsBulkRulesText] = useState('');
+  const [esportsRoundsInputMode, setEsportsRoundsInputMode] = useState('list'); // 'list' | 'bulk'
+  const [esportsBulkRoundsText, setEsportsBulkRoundsText] = useState('');
 
   const eventFileInputRef = useRef(null);
 
@@ -2514,6 +2524,157 @@ export default function AdminDashboard({ token, user, onLogout }) {
       .filter(Boolean);
   };
 
+  // ── Esports (Battle of Champions) Helpers ──
+  const updateCurrentEsportsField = (field, value) => {
+    setEventEsportsConfig(prev => {
+      if (!prev) return prev;
+      const current = prev[editingEsportsGame] || {};
+      return {
+        ...prev,
+        [editingEsportsGame]: {
+          ...current,
+          [field]: value
+        }
+      };
+    });
+  };
+
+  const handleEsportsRuleChange = (idx, value) => {
+    setEventEsportsConfig(prev => {
+      if (!prev) return prev;
+      const current = prev[editingEsportsGame] || {};
+      const rules = Array.isArray(current.rules) ? [...current.rules] : [];
+      rules[idx] = value;
+      return {
+        ...prev,
+        [editingEsportsGame]: { ...current, rules }
+      };
+    });
+  };
+
+  const handleAddEsportsRule = () => {
+    setEventEsportsConfig(prev => {
+      if (!prev) return prev;
+      const current = prev[editingEsportsGame] || {};
+      const rules = Array.isArray(current.rules) ? [...current.rules] : [];
+      rules.push('');
+      return {
+        ...prev,
+        [editingEsportsGame]: { ...current, rules }
+      };
+    });
+  };
+
+  const handleRemoveEsportsRule = (idx) => {
+    setEventEsportsConfig(prev => {
+      if (!prev) return prev;
+      const current = prev[editingEsportsGame] || {};
+      const rules = (Array.isArray(current.rules) ? current.rules : []).filter((_, i) => i !== idx);
+      return {
+        ...prev,
+        [editingEsportsGame]: { ...current, rules }
+      };
+    });
+  };
+
+  const handleMoveEsportsRule = (idx, dir) => {
+    setEventEsportsConfig(prev => {
+      if (!prev) return prev;
+      const current = prev[editingEsportsGame] || {};
+      const rules = Array.isArray(current.rules) ? [...current.rules] : [];
+      if ((dir === 'up' && idx === 0) || (dir === 'down' && idx === rules.length - 1)) return prev;
+      const target = dir === 'up' ? idx - 1 : idx + 1;
+      const tmp = rules[idx];
+      rules[idx] = rules[target];
+      rules[target] = tmp;
+      return {
+        ...prev,
+        [editingEsportsGame]: { ...current, rules }
+      };
+    });
+  };
+
+  const handleEsportsRoundChange = (idx, field, value) => {
+    setEventEsportsConfig(prev => {
+      if (!prev) return prev;
+      const current = prev[editingEsportsGame] || {};
+      const rounds = Array.isArray(current.rounds) ? [...current.rounds] : [];
+      rounds[idx] = { ...rounds[idx], [field]: value };
+      return {
+        ...prev,
+        [editingEsportsGame]: { ...current, rounds }
+      };
+    });
+  };
+
+  const handleAddEsportsRound = () => {
+    setEventEsportsConfig(prev => {
+      if (!prev) return prev;
+      const current = prev[editingEsportsGame] || {};
+      const rounds = Array.isArray(current.rounds) ? [...current.rounds] : [];
+      rounds.push({ name: `Match ${rounds.length + 1}`, time: '35 Mins', desc: '' });
+      return {
+        ...prev,
+        [editingEsportsGame]: { ...current, rounds }
+      };
+    });
+  };
+
+  const handleRemoveEsportsRound = (idx) => {
+    setEventEsportsConfig(prev => {
+      if (!prev) return prev;
+      const current = prev[editingEsportsGame] || {};
+      const rounds = (Array.isArray(current.rounds) ? current.rounds : []).filter((_, i) => i !== idx);
+      return {
+        ...prev,
+        [editingEsportsGame]: { ...current, rounds }
+      };
+    });
+  };
+
+  const handleMoveEsportsRound = (idx, dir) => {
+    setEventEsportsConfig(prev => {
+      if (!prev) return prev;
+      const current = prev[editingEsportsGame] || {};
+      const rounds = Array.isArray(current.rounds) ? [...current.rounds] : [];
+      if ((dir === 'up' && idx === 0) || (dir === 'down' && idx === rounds.length - 1)) return prev;
+      const target = dir === 'up' ? idx - 1 : idx + 1;
+      const tmp = rounds[idx];
+      rounds[idx] = rounds[target];
+      rounds[target] = tmp;
+      return {
+        ...prev,
+        [editingEsportsGame]: { ...current, rounds }
+      };
+    });
+  };
+
+  const handleSwitchEsportsTab = (gameKey) => {
+    if (esportsRulesInputMode === 'bulk') {
+      const parsedRules = parseBulkRules(esportsBulkRulesText);
+      setEventEsportsConfig(prev => {
+        if (!prev) return prev;
+        const cur = prev[editingEsportsGame] || {};
+        return { ...prev, [editingEsportsGame]: { ...cur, rules: parsedRules.length > 0 ? parsedRules : [''] } };
+      });
+      setEsportsRulesInputMode('list');
+    }
+    if (esportsRoundsInputMode === 'bulk') {
+      const parsedRounds = parseBulkRounds(esportsBulkRoundsText);
+      setEventEsportsConfig(prev => {
+        if (!prev) return prev;
+        const cur = prev[editingEsportsGame] || {};
+        return { ...prev, [editingEsportsGame]: { ...cur, rounds: parsedRounds.length > 0 ? parsedRounds : [{ name: 'Match 1', time: '', desc: '' }] } };
+      });
+      setEsportsRoundsInputMode('list');
+    }
+
+    setEditingEsportsGame(gameKey);
+    const targetTrack = eventEsportsConfig?.[gameKey] || DEFAULT_ESPORTS_CONFIG[gameKey] || {};
+    setEsportsBulkRulesText((targetTrack.rules || []).join('\n'));
+    setEsportsBulkRoundsText(formatRoundsToBulkText(targetTrack.rounds || []));
+  };
+
   const resetEventEditModal = () => {
     setEditingEvent(null);
     setEventName('');
@@ -2537,6 +2698,12 @@ export default function AdminDashboard({ token, user, onLogout }) {
     setEventRounds([]);
     setBulkRoundsText('');
     setRoundsInputMode('list');
+    setEventEsportsConfig(null);
+    setEditingEsportsGame('FREE FIRE');
+    setEsportsRulesInputMode('list');
+    setEsportsBulkRulesText('');
+    setEsportsRoundsInputMode('list');
+    setEsportsBulkRoundsText('');
     setIsEventEditModalOpen(false);
     if (eventFileInputRef.current) eventFileInputRef.current.value = '';
     if (venueFileInputRef.current) venueFileInputRef.current.value = '';
@@ -2605,6 +2772,31 @@ export default function AdminDashboard({ token, user, onLogout }) {
     setEventRounds(initialRounds);
     setBulkRoundsText(formatRoundsToBulkText(initialRounds));
     setRoundsInputMode('list');
+
+    const isEsports = eventItem.id === 'nontech-05' || (eventItem.name && eventItem.name.toLowerCase().includes('battle of champions'));
+    if (isEsports) {
+      const rawConfig = eventItem.esportsConfig || eventItem.esports_config || (eventItem.guidelines && typeof eventItem.guidelines === 'object' && !Array.isArray(eventItem.guidelines) ? (eventItem.guidelines.esports_config || eventItem.guidelines.esportsConfig) : null);
+      const initialEsports = {
+        'FREE FIRE': {
+          ...DEFAULT_ESPORTS_CONFIG['FREE FIRE'],
+          ...(rawConfig?.['FREE FIRE'] || rawConfig?.['free fire'] || {})
+        },
+        'BGMI': {
+          ...DEFAULT_ESPORTS_CONFIG['BGMI'],
+          ...(rawConfig?.['BGMI'] || rawConfig?.['bgmi'] || {})
+        }
+      };
+      setEventEsportsConfig(initialEsports);
+      setEditingEsportsGame('FREE FIRE');
+      const ffRules = initialEsports['FREE FIRE']?.rules || [];
+      setEsportsBulkRulesText(ffRules.join('\n'));
+      setEsportsRulesInputMode('list');
+      const ffRounds = initialEsports['FREE FIRE']?.rounds || [];
+      setEsportsBulkRoundsText(formatRoundsToBulkText(ffRounds));
+      setEsportsRoundsInputMode('list');
+    } else {
+      setEventEsportsConfig(null);
+    }
 
     setIsEventEditModalOpen(true);
   };
@@ -2734,9 +2926,21 @@ export default function AdminDashboard({ token, user, onLogout }) {
       })
       .filter(r => r.name.length > 0 || r.desc.length > 0);
 
-    const loadingToast = toast.loading(editingEvent ? 'Saving event changes...' : 'Creating new event...');
-    const url = editingEvent ? getApiUrl(`/api/admin/events/${editingEvent.id}`) : getApiUrl('/api/admin/events');
-    const method = editingEvent ? 'PUT' : 'POST';
+    let finalEsportsConfig = eventEsportsConfig ? JSON.parse(JSON.stringify(eventEsportsConfig)) : null;
+    if (finalEsportsConfig && finalEsportsConfig[editingEsportsGame]) {
+      if (esportsRulesInputMode === 'bulk') {
+        const parsed = parseBulkRules(esportsBulkRulesText);
+        finalEsportsConfig[editingEsportsGame].rules = parsed.length > 0 ? parsed : [''];
+      }
+      if (esportsRoundsInputMode === 'bulk') {
+        const parsedRounds = parseBulkRounds(esportsBulkRoundsText);
+        finalEsportsConfig[editingEsportsGame].rounds = parsedRounds.length > 0 ? parsedRounds : [{ name: 'Match 1', time: '', desc: '' }];
+      }
+    }
+
+    const isBattleOfChampions = editingEvent && (editingEvent.id === 'nontech-05' || editingEvent.name?.toLowerCase().includes('battle of champions'));
+    const resolvedFee = isBattleOfChampions ? '₹200 per squad' : eventFee.trim();
+    const resolvedTeamSize = isBattleOfChampions ? 'Only Squad Match (4 Players)' : eventTeamSize.trim();
 
     const payload = {
       name: eventName.trim(),
@@ -2746,18 +2950,32 @@ export default function AdminDashboard({ token, user, onLogout }) {
       venue: eventVenue.trim(),
       venueImage: eventVenueImage.trim(),
       timing: eventTiming.trim(),
-      fee: eventFee.trim(),
-      teamSize: eventTeamSize.trim(),
+      fee: resolvedFee,
+      feePerHead: isBattleOfChampions ? 50 : undefined,
+      feeType: isBattleOfChampions ? 'per_squad' : undefined,
+      teamSize: resolvedTeamSize,
       tag: eventTag.trim() || (eventCategory === 'technical' ? 'Technical Presentation' : 'Non-Technical Event'),
       description: eventDesc.trim(),
       image: eventImage.trim(),
       rules: cleanedRules,
-      rounds: cleanedRounds
+      rounds: cleanedRounds,
+      ...(finalEsportsConfig ? { esportsConfig: finalEsportsConfig, esports_config: finalEsportsConfig } : {})
     };
 
+    const url = editingEvent
+      ? getApiUrl(`/api/admin/events/${editingEvent.id}`)
+      : getApiUrl('/api/admin/events');
+    const method = editingEvent ? 'PUT' : 'POST';
+    const loadingToast = toast.loading(editingEvent ? 'Updating event specifications...' : 'Creating new symposium event...');
+    const authToken = token || localStorage.getItem('adminToken') || '';
+
+    setIsSavingEvent(true);
     fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${authToken}` 
+      },
       body: JSON.stringify(payload)
     })
       .then(res => res.json())
@@ -2771,7 +2989,8 @@ export default function AdminDashboard({ token, user, onLogout }) {
           toast.error(result.message || 'Failed to save event', { id: loadingToast });
         }
       })
-      .catch(() => toast.error('Server connection error', { id: loadingToast }));
+      .catch(() => toast.error('Server connection error', { id: loadingToast }))
+      .finally(() => setIsSavingEvent(false));
   };
 
   const handleDeleteEvent = (eventId, name) => {
@@ -8780,8 +8999,31 @@ export default function AdminDashboard({ token, user, onLogout }) {
       {/* ======================================================== */}
       {isEventEditModalOpen && (
         <div style={S.modalBackdrop} onClick={resetEventEditModal}>
-          <div style={{ ...S.modalCard, maxWidth: '740px', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
-            <div style={S.modalHeader}>
+          <div 
+            style={{ 
+              ...S.modalCard, 
+              maxWidth: '780px', 
+              maxHeight: '92vh', 
+              height: '92vh',
+              display: 'flex', 
+              flexDirection: 'column', 
+              overflow: 'hidden',
+              boxShadow: '0 25px 60px -15px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08)'
+            }} 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{
+              ...S.modalHeader,
+              flexShrink: 0,
+              padding: '1.25rem 1.75rem',
+              borderBottom: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+              background: isDark ? '#111827' : '#ffffff',
+              zIndex: 10
+            }}>
               <div style={S.modalHeaderLeft}>
                 <div style={S.modalIconBoxEvent}>
                   <FaCalendarAlt size={18} />
@@ -8799,13 +9041,47 @@ export default function AdminDashboard({ token, user, onLogout }) {
                   </p>
                 </div>
               </div>
-              <button onClick={resetEventEditModal} style={S.modalCloseBtn} title="Close (Esc)">
-                <FaTimes />
-              </button>
+
+              {/* Action Buttons in Header: Save Changes & Close */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                {!isLeadCoordinator && (
+                  <button 
+                    type="submit" 
+                    form="event-edit-form"
+                    disabled={isSavingEvent}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      padding: '0.55rem 1.15rem',
+                      background: isSavingEvent ? '#64748b' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '0.86rem',
+                      fontWeight: '700',
+                      cursor: isSavingEvent ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
+                      whiteSpace: 'nowrap',
+                      transition: 'all 0.15s ease'
+                    }}
+                    title="Save all changes directly"
+                  >
+                    <FaCheck size={13} /> {isSavingEvent ? 'Saving Changes...' : (editingEvent ? 'Save Changes' : 'Create Event')}
+                  </button>
+                )}
+                <button onClick={resetEventEditModal} style={S.modalCloseBtn} title="Close (Esc)">
+                  <FaTimes />
+                </button>
+              </div>
             </div>
 
-            <form onSubmit={isLeadCoordinator ? (e) => { e.preventDefault(); resetEventEditModal(); } : handleSubmitEventEdit} style={S.modalForm}>
-              <div style={S.modalFormBody}>
+            <form 
+              id="event-edit-form"
+              onSubmit={isLeadCoordinator ? (e) => { e.preventDefault(); resetEventEditModal(); } : handleSubmitEventEdit} 
+              style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}
+            >
+              <div style={{ ...S.modalFormBody, flex: 1, overflowY: 'auto', padding: '1.5rem', WebkitOverflowScrolling: 'touch' }}>
                 {/* Event Poster / Picture Upload & Presets */}
                 <div style={S.modalInputGroup}>
                   <label style={S.label}>Event Poster / Picture</label>
@@ -9165,7 +9441,723 @@ export default function AdminDashboard({ token, user, onLogout }) {
                   />
                 </div>
 
-                {/* Event Rules & Regulations Management */}
+                {eventEsportsConfig ? (
+                  <div style={{
+                    marginTop: '1rem',
+                    padding: '1.25rem',
+                    borderRadius: '14px',
+                    background: isDark 
+                      ? (editingEsportsGame === 'FREE FIRE' ? 'linear-gradient(145deg, rgba(30, 20, 15, 0.7) 0%, rgba(17, 24, 39, 0.9) 100%)' : 'linear-gradient(145deg, rgba(12, 28, 48, 0.7) 0%, rgba(17, 24, 39, 0.9) 100%)')
+                      : (editingEsportsGame === 'FREE FIRE' ? 'linear-gradient(145deg, #fff7ed 0%, #fef2f2 100%)' : 'linear-gradient(145deg, #f0f9ff 0%, #f8fafc 100%)'),
+                    border: isDark 
+                      ? (editingEsportsGame === 'FREE FIRE' ? '1px solid rgba(249, 115, 22, 0.4)' : '1px solid rgba(14, 165, 233, 0.4)')
+                      : (editingEsportsGame === 'FREE FIRE' ? '1px solid #fed7aa' : '1px solid #bae6fd'),
+                    boxShadow: isDark ? '0 10px 30px -5px rgba(0, 0, 0, 0.5)' : '0 8px 24px -4px rgba(0, 0, 0, 0.06)'
+                  }}>
+                    {/* Esports Section Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem', marginBottom: '1.25rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '10px',
+                          background: editingEsportsGame === 'FREE FIRE' 
+                            ? 'linear-gradient(135deg, #f97316, #dc2626)' 
+                            : 'linear-gradient(135deg, #0284c7, #2563eb)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#ffffff',
+                          boxShadow: editingEsportsGame === 'FREE FIRE' 
+                            ? '0 4px 12px rgba(249, 115, 22, 0.4)' 
+                            : '0 4px 12px rgba(2, 132, 199, 0.4)'
+                        }}>
+                          {editingEsportsGame === 'FREE FIRE' ? <FaFire size={18} /> : <FaCrosshairs size={18} />}
+                        </div>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '800', color: isDark ? '#f8fafc' : '#0f172a', letterSpacing: '-0.01em' }}>
+                            Battle of Champions — Game Tracks Setup
+                          </h4>
+                          <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b' }}>
+                            Specific competition rules, match rounds, venues, and timings for Free Fire and BGMI.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Track Selector Tabs */}
+                      <div style={{
+                        display: 'inline-flex',
+                        padding: '4px',
+                        borderRadius: '10px',
+                        background: isDark ? 'rgba(17, 24, 39, 0.8)' : '#e2e8f0',
+                        gap: '4px',
+                        border: isDark ? '1px solid #374151' : '1px solid #cbd5e1'
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => handleSwitchEsportsTab('FREE FIRE')}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '7px',
+                            padding: '0.5rem 1.1rem',
+                            borderRadius: '8px',
+                            border: 'none',
+                            fontSize: '0.82rem',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            background: editingEsportsGame === 'FREE FIRE' 
+                              ? 'linear-gradient(135deg, #ea580c, #dc2626)' 
+                              : 'transparent',
+                            color: editingEsportsGame === 'FREE FIRE' 
+                              ? '#ffffff' 
+                              : (isDark ? '#94a3b8' : '#475569'),
+                            boxShadow: editingEsportsGame === 'FREE FIRE' ? '0 2px 10px rgba(234, 88, 12, 0.45)' : 'none'
+                          }}
+                        >
+                          <FaFire /> Free Fire Track
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSwitchEsportsTab('BGMI')}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '7px',
+                            padding: '0.5rem 1.1rem',
+                            borderRadius: '8px',
+                            border: 'none',
+                            fontSize: '0.82rem',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            background: editingEsportsGame === 'BGMI' 
+                              ? 'linear-gradient(135deg, #0284c7, #2563eb)' 
+                              : 'transparent',
+                            color: editingEsportsGame === 'BGMI' 
+                              ? '#ffffff' 
+                              : (isDark ? '#94a3b8' : '#475569'),
+                            boxShadow: editingEsportsGame === 'BGMI' ? '0 2px 10px rgba(2, 132, 199, 0.45)' : 'none'
+                          }}
+                        >
+                          <FaCrosshairs /> BGMI Track
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Active Track Fields */}
+                    {(() => {
+                      const curTrack = eventEsportsConfig[editingEsportsGame] || DEFAULT_ESPORTS_CONFIG[editingEsportsGame] || {};
+                      const trackRules = Array.isArray(curTrack.rules) ? curTrack.rules : [];
+                      const trackRounds = Array.isArray(curTrack.rounds) ? curTrack.rounds : [];
+
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {/* Track Details Row 1: Subtitle & Tagline */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+                            <div style={S.modalInputGroup}>
+                              <label style={S.label}>Track Subtitle</label>
+                              <input
+                                type="text"
+                                value={curTrack.subtitle || ''}
+                                onChange={(e) => updateCurrentEsportsField('subtitle', e.target.value)}
+                                style={S.input}
+                                placeholder="e.g. Free Fire Custom Room Tournament"
+                                disabled={isLeadCoordinator}
+                                readOnly={isLeadCoordinator}
+                              />
+                            </div>
+                            <div style={S.modalInputGroup}>
+                              <label style={S.label}>Track Tagline / Badge</label>
+                              <input
+                                type="text"
+                                value={curTrack.badge || curTrack.tagline || ''}
+                                onChange={(e) => {
+                                  updateCurrentEsportsField('badge', e.target.value);
+                                  updateCurrentEsportsField('tagline', e.target.value);
+                                }}
+                                style={S.input}
+                                placeholder={editingEsportsGame === 'FREE FIRE' ? 'Mobile Only • 4-Player Squad' : 'Smartphone / iPad • 4-Player Squad'}
+                                disabled={isLeadCoordinator}
+                                readOnly={isLeadCoordinator}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Track Details Row 2: Specific Venue & Schedule */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+                            <div style={S.modalInputGroup}>
+                              <label style={S.label}>
+                                <FaBuilding style={{ marginRight: '6px', color: editingEsportsGame === 'FREE FIRE' ? '#f97316' : '#0284c7' }} />
+                                Track Venue
+                              </label>
+                              <input
+                                type="text"
+                                value={curTrack.venue || ''}
+                                onChange={(e) => updateCurrentEsportsField('venue', e.target.value)}
+                                style={S.input}
+                                placeholder="e.g. Mech dept Drawing Hall"
+                                disabled={isLeadCoordinator}
+                                readOnly={isLeadCoordinator}
+                              />
+                            </div>
+                            <div style={S.modalInputGroup}>
+                              <label style={S.label}>
+                                <FaClock style={{ marginRight: '6px', color: editingEsportsGame === 'FREE FIRE' ? '#f97316' : '#0284c7' }} />
+                                Track Timing / Schedule
+                              </label>
+                              <input
+                                type="text"
+                                value={curTrack.timing || ''}
+                                onChange={(e) => updateCurrentEsportsField('timing', e.target.value)}
+                                style={S.input}
+                                placeholder="e.g. 10:40 AM TO 12:40 PM"
+                                disabled={isLeadCoordinator}
+                                readOnly={isLeadCoordinator}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Track Description */}
+                          <div style={S.modalInputGroup}>
+                            <label style={S.label}>
+                              {editingEsportsGame} Track Description
+                            </label>
+                            <textarea
+                              value={curTrack.description || ''}
+                              onChange={(e) => updateCurrentEsportsField('description', e.target.value)}
+                              style={{ ...S.input, resize: 'vertical' }}
+                              rows={2}
+                              placeholder={`Specific format, room drop details, and objectives for ${editingEsportsGame}...`}
+                              disabled={isLeadCoordinator}
+                              readOnly={isLeadCoordinator}
+                            />
+                          </div>
+
+                          {/* Track Rules Sub-Section */}
+                          <div style={{
+                            padding: '1rem',
+                            borderRadius: '10px',
+                            background: isDark ? 'rgba(17, 24, 39, 0.7)' : '#ffffff',
+                            border: isDark ? '1px solid #374151' : '1px solid #e2e8f0'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <FaListOl style={{ color: editingEsportsGame === 'FREE FIRE' ? '#f97316' : '#0284c7' }} />
+                                <label style={{ ...S.label, margin: 0, fontSize: '0.9rem', fontWeight: '700' }}>
+                                  {editingEsportsGame} Competition Rules
+                                </label>
+                                <span style={{
+                                  fontSize: '0.72rem',
+                                  padding: '2px 8px',
+                                  borderRadius: '999px',
+                                  background: editingEsportsGame === 'FREE FIRE' 
+                                    ? (isDark ? '#431407' : '#ffedd5') 
+                                    : (isDark ? '#082f49' : '#e0f2fe'),
+                                  color: editingEsportsGame === 'FREE FIRE' ? '#ea580c' : '#0284c7',
+                                  fontWeight: '700'
+                                }}>
+                                  {esportsRulesInputMode === 'bulk' 
+                                    ? `${parseBulkRules(esportsBulkRulesText).length} Rules` 
+                                    : `${trackRules.filter(r => typeof r === 'string' && r.trim()).length} Rules`}
+                                </span>
+                              </div>
+
+                              {!isLeadCoordinator && (
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (esportsRulesInputMode === 'list') {
+                                        setEsportsBulkRulesText(trackRules.filter(r => typeof r === 'string' && r.trim()).join('\n'));
+                                        setEsportsRulesInputMode('bulk');
+                                      } else {
+                                        const parsed = parseBulkRules(esportsBulkRulesText);
+                                        updateCurrentEsportsField('rules', parsed.length > 0 ? parsed : ['']);
+                                        setEsportsRulesInputMode('list');
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '0.35rem 0.65rem',
+                                      fontSize: '0.75rem',
+                                      fontWeight: '600',
+                                      borderRadius: '6px',
+                                      background: isDark ? '#374151' : '#f1f5f9',
+                                      color: isDark ? '#e5e7eb' : '#475569',
+                                      border: isDark ? '1px solid #4b5563' : '1px solid #cbd5e1',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    {esportsRulesInputMode === 'list' ? 'Switch to Bulk Paste' : 'Switch to List View'}
+                                  </button>
+
+                                  {esportsRulesInputMode === 'list' && (
+                                    <button
+                                      type="button"
+                                      onClick={handleAddEsportsRule}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        padding: '0.35rem 0.75rem',
+                                        fontSize: '0.75rem',
+                                        fontWeight: '600',
+                                        borderRadius: '6px',
+                                        background: editingEsportsGame === 'FREE FIRE' ? '#ea580c' : '#0284c7',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      <FaPlus size={10} /> Add Rule
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {esportsRulesInputMode === 'list' ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {trackRules.map((rule, idx) => (
+                                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{
+                                      width: '24px',
+                                      height: '24px',
+                                      borderRadius: '50%',
+                                      background: editingEsportsGame === 'FREE FIRE' 
+                                        ? (isDark ? '#431407' : '#ffedd5') 
+                                        : (isDark ? '#082f49' : '#e0f2fe'),
+                                      color: editingEsportsGame === 'FREE FIRE' ? '#ea580c' : '#0284c7',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontSize: '0.72rem',
+                                      fontWeight: '700',
+                                      flexShrink: 0
+                                    }}>
+                                      {idx + 1}
+                                    </span>
+                                    <input
+                                      type="text"
+                                      value={rule}
+                                      onChange={(e) => handleEsportsRuleChange(idx, e.target.value)}
+                                      placeholder={`Rule #${idx + 1}`}
+                                      disabled={isLeadCoordinator}
+                                      readOnly={isLeadCoordinator}
+                                      style={{ ...S.input, flex: 1, padding: '0.45rem 0.75rem', fontSize: '0.84rem' }}
+                                    />
+                                    {!isLeadCoordinator && (
+                                      <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMoveEsportsRule(idx, 'up')}
+                                          disabled={idx === 0}
+                                          style={{
+                                            padding: '4px 6px',
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: idx === 0 ? '#6b7280' : (isDark ? '#9ca3af' : '#64748b'),
+                                            cursor: idx === 0 ? 'default' : 'pointer',
+                                            opacity: idx === 0 ? 0.3 : 1
+                                          }}
+                                          title="Move rule up"
+                                        >
+                                          ▲
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMoveEsportsRule(idx, 'down')}
+                                          disabled={idx === trackRules.length - 1}
+                                          style={{
+                                            padding: '4px 6px',
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: idx === trackRules.length - 1 ? '#6b7280' : (isDark ? '#9ca3af' : '#64748b'),
+                                            cursor: idx === trackRules.length - 1 ? 'default' : 'pointer',
+                                            opacity: idx === trackRules.length - 1 ? 0.3 : 1
+                                          }}
+                                          title="Move rule down"
+                                        >
+                                          ▼
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveEsportsRule(idx)}
+                                          style={{
+                                            padding: '4px 6px',
+                                            background: isDark ? '#451a1a' : '#fee2e2',
+                                            border: isDark ? '1px solid #7f1d1d' : '1px solid #fecaca',
+                                            color: '#ef4444',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer'
+                                          }}
+                                          title="Delete rule"
+                                        >
+                                          <FaTrash size={11} />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+
+                                {trackRules.length === 0 && (
+                                  <div style={{ textAlign: 'center', padding: '0.75rem', color: isDark ? '#9ca3af' : '#64748b', fontSize: '0.82rem' }}>
+                                    No rules listed for {editingEsportsGame}.
+                                  </div>
+                                )}
+
+                                {!isLeadCoordinator && (
+                                  <button
+                                    type="button"
+                                    onClick={handleAddEsportsRule}
+                                    style={{
+                                      marginTop: '4px',
+                                      alignSelf: 'flex-start',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '0.45rem 0.85rem',
+                                      borderRadius: '6px',
+                                      background: isDark ? '#1f2937' : '#f8fafc',
+                                      border: isDark ? '1px dashed #4b5563' : '1px dashed #cbd5e1',
+                                      color: editingEsportsGame === 'FREE FIRE' ? '#ea580c' : '#0284c7',
+                                      fontSize: '0.8rem',
+                                      fontWeight: '600',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <FaPlus size={10} /> Add Another Rule
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div>
+                                <textarea
+                                  value={esportsBulkRulesText}
+                                  onChange={(e) => setEsportsBulkRulesText(e.target.value)}
+                                  rows={5}
+                                  placeholder="Paste or type one rule per line..."
+                                  style={{
+                                    ...S.input,
+                                    width: '100%',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.82rem',
+                                    lineHeight: '1.5',
+                                    resize: 'vertical'
+                                  }}
+                                />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                                  <span style={{ fontSize: '0.75rem', color: isDark ? '#9ca3af' : '#64748b' }}>
+                                    Bullet markers (1., 2., -, *) will be cleaned automatically.
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const parsed = parseBulkRules(esportsBulkRulesText);
+                                      updateCurrentEsportsField('rules', parsed.length > 0 ? parsed : ['']);
+                                      setEsportsRulesInputMode('list');
+                                    }}
+                                    style={{
+                                      padding: '0.3rem 0.65rem',
+                                      fontSize: '0.75rem',
+                                      borderRadius: '6px',
+                                      background: isDark ? '#374151' : '#e2e8f0',
+                                      color: isDark ? '#f3f4f6' : '#1e293b',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      fontWeight: '600'
+                                    }}
+                                  >
+                                    Apply to List
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Track Rounds Sub-Section */}
+                          <div style={{
+                            padding: '1rem',
+                            borderRadius: '10px',
+                            background: isDark ? 'rgba(17, 24, 39, 0.7)' : '#ffffff',
+                            border: isDark ? '1px solid #374151' : '1px solid #e2e8f0'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <FaLayerGroup style={{ color: editingEsportsGame === 'FREE FIRE' ? '#f97316' : '#0284c7' }} />
+                                <label style={{ ...S.label, margin: 0, fontSize: '0.9rem', fontWeight: '700' }}>
+                                  {editingEsportsGame} Match Rounds & Stages
+                                </label>
+                                <span style={{
+                                  fontSize: '0.72rem',
+                                  padding: '2px 8px',
+                                  borderRadius: '999px',
+                                  background: editingEsportsGame === 'FREE FIRE' 
+                                    ? (isDark ? '#431407' : '#ffedd5') 
+                                    : (isDark ? '#082f49' : '#e0f2fe'),
+                                  color: editingEsportsGame === 'FREE FIRE' ? '#ea580c' : '#0284c7',
+                                  fontWeight: '700'
+                                }}>
+                                  {esportsRoundsInputMode === 'bulk' 
+                                    ? `${parseBulkRounds(esportsBulkRoundsText).length} Rounds` 
+                                    : `${trackRounds.length} Rounds`}
+                                </span>
+                              </div>
+
+                              {!isLeadCoordinator && (
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (esportsRoundsInputMode === 'list') {
+                                        setEsportsBulkRoundsText(formatRoundsToBulkText(trackRounds));
+                                        setEsportsRoundsInputMode('bulk');
+                                      } else {
+                                        const parsed = parseBulkRounds(esportsBulkRoundsText);
+                                        updateCurrentEsportsField('rounds', parsed.length > 0 ? parsed : [{ name: 'Match 1', time: '35 Mins', desc: '' }]);
+                                        setEsportsRoundsInputMode('list');
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '0.35rem 0.65rem',
+                                      fontSize: '0.75rem',
+                                      fontWeight: '600',
+                                      borderRadius: '6px',
+                                      background: isDark ? '#374151' : '#f1f5f9',
+                                      color: isDark ? '#e5e7eb' : '#475569',
+                                      border: isDark ? '1px solid #4b5563' : '1px solid #cbd5e1',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    {esportsRoundsInputMode === 'list' ? 'Switch to Bulk Paste' : 'Switch to List View'}
+                                  </button>
+
+                                  {esportsRoundsInputMode === 'list' && (
+                                    <button
+                                      type="button"
+                                      onClick={handleAddEsportsRound}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        padding: '0.35rem 0.75rem',
+                                        fontSize: '0.75rem',
+                                        fontWeight: '600',
+                                        borderRadius: '6px',
+                                        background: editingEsportsGame === 'FREE FIRE' ? '#ea580c' : '#0284c7',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      <FaPlus size={10} /> Add Match
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {esportsRoundsInputMode === 'list' ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                {trackRounds.map((rnd, idx) => (
+                                  <div
+                                    key={idx}
+                                    style={{
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '8px',
+                                      padding: '0.75rem',
+                                      borderRadius: '8px',
+                                      background: isDark ? 'rgba(31, 41, 55, 0.5)' : '#f8fafc',
+                                      border: isDark ? '1px solid #374151' : '1px solid #e2e8f0'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span style={{
+                                        fontSize: '0.72rem',
+                                        fontWeight: '700',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        background: editingEsportsGame === 'FREE FIRE' 
+                                          ? (isDark ? '#431407' : '#ffedd5') 
+                                          : (isDark ? '#082f49' : '#e0f2fe'),
+                                        color: editingEsportsGame === 'FREE FIRE' ? '#ea580c' : '#0284c7',
+                                        letterSpacing: '0.04em'
+                                      }}>
+                                        MATCH {idx + 1}
+                                      </span>
+
+                                      {!isLeadCoordinator && (
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleMoveEsportsRound(idx, 'up')}
+                                            disabled={idx === 0}
+                                            style={{
+                                              padding: '3px 6px',
+                                              background: 'transparent',
+                                              border: 'none',
+                                              color: idx === 0 ? '#6b7280' : (isDark ? '#9ca3af' : '#64748b'),
+                                              cursor: idx === 0 ? 'default' : 'pointer',
+                                              opacity: idx === 0 ? 0.3 : 1
+                                            }}
+                                            title="Move match up"
+                                          >
+                                            ▲
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleMoveEsportsRound(idx, 'down')}
+                                            disabled={idx === trackRounds.length - 1}
+                                            style={{
+                                              padding: '3px 6px',
+                                              background: 'transparent',
+                                              border: 'none',
+                                              color: idx === trackRounds.length - 1 ? '#6b7280' : (isDark ? '#9ca3af' : '#64748b'),
+                                              cursor: idx === trackRounds.length - 1 ? 'default' : 'pointer',
+                                              opacity: idx === trackRounds.length - 1 ? 0.3 : 1
+                                            }}
+                                            title="Move match down"
+                                          >
+                                            ▼
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRemoveEsportsRound(idx)}
+                                            style={{
+                                              padding: '3px 6px',
+                                              background: isDark ? '#451a1a' : '#fee2e2',
+                                              border: isDark ? '1px solid #7f1d1d' : '1px solid #fecaca',
+                                              color: '#ef4444',
+                                              borderRadius: '4px',
+                                              cursor: 'pointer'
+                                            }}
+                                            title="Delete match"
+                                          >
+                                            <FaTrash size={10} />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Round Name & Duration */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr', gap: '8px' }}>
+                                      <input
+                                        type="text"
+                                        value={rnd.name || ''}
+                                        onChange={(e) => handleEsportsRoundChange(idx, 'name', e.target.value)}
+                                        placeholder="Match Title (e.g. Bermuda Qualifying Drop)"
+                                        disabled={isLeadCoordinator}
+                                        readOnly={isLeadCoordinator}
+                                        style={{ ...S.input, padding: '0.45rem 0.65rem', fontSize: '0.82rem', width: '100%' }}
+                                      />
+                                      <input
+                                        type="text"
+                                        value={rnd.time || ''}
+                                        onChange={(e) => handleEsportsRoundChange(idx, 'time', e.target.value)}
+                                        placeholder="Timing (e.g. 35 Mins)"
+                                        disabled={isLeadCoordinator}
+                                        readOnly={isLeadCoordinator}
+                                        style={{ ...S.input, padding: '0.45rem 0.65rem', fontSize: '0.82rem', width: '100%' }}
+                                      />
+                                    </div>
+
+                                    {/* Match Description */}
+                                    <textarea
+                                      value={rnd.desc || ''}
+                                      onChange={(e) => handleEsportsRoundChange(idx, 'desc', e.target.value)}
+                                      placeholder="Match format, map name, scoring rules, or qualification details..."
+                                      rows={2}
+                                      disabled={isLeadCoordinator}
+                                      readOnly={isLeadCoordinator}
+                                      style={{ ...S.input, padding: '0.45rem 0.65rem', fontSize: '0.82rem', width: '100%', resize: 'vertical' }}
+                                    />
+                                  </div>
+                                ))}
+
+                                {trackRounds.length === 0 && (
+                                  <div style={{ textAlign: 'center', padding: '0.75rem', color: isDark ? '#9ca3af' : '#64748b', fontSize: '0.82rem' }}>
+                                    No matches listed for {editingEsportsGame}.
+                                  </div>
+                                )}
+
+                                {!isLeadCoordinator && (
+                                  <button
+                                    type="button"
+                                    onClick={handleAddEsportsRound}
+                                    style={{
+                                      marginTop: '4px',
+                                      alignSelf: 'flex-start',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '0.45rem 0.85rem',
+                                      borderRadius: '6px',
+                                      background: isDark ? '#1f2937' : '#f8fafc',
+                                      border: isDark ? '1px dashed #4b5563' : '1px dashed #cbd5e1',
+                                      color: editingEsportsGame === 'FREE FIRE' ? '#ea580c' : '#0284c7',
+                                      fontSize: '0.8rem',
+                                      fontWeight: '600',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <FaPlus size={10} /> Add Another Match
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div>
+                                <textarea
+                                  value={esportsBulkRoundsText}
+                                  onChange={(e) => setEsportsBulkRoundsText(e.target.value)}
+                                  rows={5}
+                                  placeholder={"Format: Match Name | Duration | Description\ne.g.\nMatch 1: Bermuda Qualifying Drop | 35 Mins | Top scoring squads advance to finals"}
+                                  style={{
+                                    ...S.input,
+                                    width: '100%',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.82rem',
+                                    lineHeight: '1.5',
+                                    resize: 'vertical'
+                                  }}
+                                />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                                  <span style={{ fontSize: '0.75rem', color: isDark ? '#9ca3af' : '#64748b' }}>
+                                    Separate Title, Duration, and Description using "|" or ":".
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const parsed = parseBulkRounds(esportsBulkRoundsText);
+                                      updateCurrentEsportsField('rounds', parsed.length > 0 ? parsed : [{ name: 'Match 1', time: '35 Mins', desc: '' }]);
+                                      setEsportsRoundsInputMode('list');
+                                    }}
+                                    style={{
+                                      padding: '0.3rem 0.65rem',
+                                      fontSize: '0.75rem',
+                                      borderRadius: '6px',
+                                      background: isDark ? '#374151' : '#e2e8f0',
+                                      color: isDark ? '#f3f4f6' : '#1e293b',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      fontWeight: '600'
+                                    }}
+                                  >
+                                    Apply to List
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <>
+                    {/* Event Rules & Regulations Management */}
                 <div style={{
                   marginTop: '0.5rem',
                   padding: '1rem',
@@ -9693,21 +10685,56 @@ export default function AdminDashboard({ token, user, onLogout }) {
                     </div>
                   )}
                 </div>
+                  </>
+                )}
               </div>
 
-              <div style={isLeadCoordinator ? { ...S.modalFooter, justifyContent: 'flex-end' } : S.modalFooter}>
+              <div style={{
+                ...S.modalFooter,
+                flexShrink: 0,
+                borderTop: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0',
+                background: isDark ? '#111827' : '#f8fafc',
+                display: 'flex',
+                justifyContent: isLeadCoordinator ? 'flex-end' : 'space-between',
+                alignItems: 'center',
+                padding: '1rem 1.75rem',
+                boxShadow: '0 -4px 16px rgba(0,0,0,0.08)',
+                zIndex: 10
+              }}>
                 {isLeadCoordinator ? (
                   <button type="button" onClick={resetEventEditModal} style={S.primaryBtn}>
                     Close
                   </button>
                 ) : (
                   <>
-                    <button type="button" onClick={resetEventEditModal} style={S.cancelBtn}>
-                      Cancel
-                    </button>
-                    <button type="submit" style={S.primaryBtn}>
-                      {editingEvent ? 'Save Event Changes' : 'Create Event'}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', color: isDark ? '#94a3b8' : '#64748b' }}>
+                      <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px #10b981' }}></span>
+                      <span style={{ fontWeight: '600' }}>
+                        {editingEvent ? `Editing: ${editingEvent.name || editingEvent.id}` : 'New Event Mode'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <button type="button" onClick={resetEventEditModal} style={S.cancelBtn}>
+                        Cancel
+                      </button>
+                      <button 
+                        type="submit" 
+                        disabled={isSavingEvent}
+                        style={{
+                          ...S.primaryBtn,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '0.75rem 1.75rem',
+                          background: isSavingEvent ? '#64748b' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                          boxShadow: '0 4px 14px rgba(37,99,235,0.4)',
+                          fontWeight: '700',
+                          cursor: isSavingEvent ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <FaCheck /> {isSavingEvent ? 'Saving Changes...' : (editingEvent ? 'Save Event Changes' : 'Create Event')}
+                      </button>
+                    </div>
                   </>
                 )}
               </div>

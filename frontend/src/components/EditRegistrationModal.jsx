@@ -216,11 +216,12 @@ export default function EditRegistrationModal({
 
     try {
       const idToUpdate = registration.id || registration.ticketCode || registration.ticket_code;
+      const authToken = token || localStorage.getItem('adminToken') || '';
       const res = await fetch(getApiUrl(`/api/admin/registrations/${encodeURIComponent(idToUpdate)}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${authToken}`
         },
         body: JSON.stringify(payload)
       });
@@ -259,8 +260,9 @@ export default function EditRegistrationModal({
     },
     modal: {
       width: '100%',
-      maxWidth: '780px',
-      maxHeight: '90vh',
+      maxWidth: '820px',
+      maxHeight: '92vh',
+      height: '92vh',
       display: 'flex',
       flexDirection: 'column',
       background: isDark ? '#0f172a' : '#ffffff',
@@ -278,7 +280,10 @@ export default function EditRegistrationModal({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      background: isDark ? 'rgba(30, 41, 59, 0.5)' : '#f8fafc'
+      gap: '12px',
+      flexShrink: 0,
+      background: isDark ? 'rgba(30, 41, 59, 0.5)' : '#f8fafc',
+      zIndex: 10
     },
     tabsBar: {
       display: 'flex',
@@ -286,7 +291,8 @@ export default function EditRegistrationModal({
       padding: '0.65rem 1.75rem',
       background: isDark ? '#111827' : '#f1f5f9',
       borderBottom: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0',
-      overflowX: 'auto'
+      overflowX: 'auto',
+      flexShrink: 0
     },
     tabBtn: (active) => ({
       padding: '0.55rem 1rem',
@@ -357,9 +363,11 @@ export default function EditRegistrationModal({
       borderTop: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0',
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'flex-end',
+      justifyContent: 'space-between',
       gap: '0.75rem',
-      background: isDark ? 'rgba(15, 23, 42, 0.8)' : '#f8fafc'
+      flexShrink: 0,
+      background: isDark ? '#0f172a' : '#f8fafc',
+      zIndex: 10
     },
     closeBtn: {
       width: '32px',
@@ -403,9 +411,36 @@ export default function EditRegistrationModal({
               Update registration details, event enrollment, team squad, and payment status.
             </p>
           </div>
-          <button style={S.closeBtn} onClick={onClose} title="Close (Esc)">
-            <FaTimes size={13} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              type="submit"
+              form="edit-registration-form"
+              disabled={isSubmitting}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '7px',
+                padding: '0.5rem 1.15rem',
+                borderRadius: '8px',
+                border: 'none',
+                background: isSubmitting ? '#64748b' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                color: '#ffffff',
+                fontSize: '0.85rem',
+                fontWeight: '700',
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.35)',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
+              }}
+              title="Save all changes directly"
+            >
+              <FaSave size={12} />
+              <span>{isSubmitting ? 'Saving...' : 'Save Changes'}</span>
+            </button>
+            <button style={S.closeBtn} onClick={onClose} title="Close (Esc)">
+              <FaTimes size={13} />
+            </button>
+          </div>
         </div>
 
         {/* Section Navigation Tabs */}
@@ -437,7 +472,7 @@ export default function EditRegistrationModal({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <form id="edit-registration-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <div style={S.body}>
             {/* ── SECTION 1: PARTICIPANT PERSONAL DETAILS ── */}
             {activeSection === 'participant' && (
@@ -449,7 +484,6 @@ export default function EditRegistrationModal({
                     </label>
                     <input
                       type="text"
-                      required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder="e.g. John Doe"
@@ -463,7 +497,6 @@ export default function EditRegistrationModal({
                     </label>
                     <input
                       type="email"
-                      required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="e.g. participant@gmail.com"
@@ -479,7 +512,6 @@ export default function EditRegistrationModal({
                     </label>
                     <input
                       type="tel"
-                      required
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="10-digit mobile number"
@@ -892,47 +924,54 @@ export default function EditRegistrationModal({
 
           {/* Footer Controls */}
           <div style={S.footer}>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              style={{
-                padding: '0.65rem 1.25rem',
-                borderRadius: '8px',
-                border: isDark ? '1px solid #334155' : '1px solid #cbd5e1',
-                background: isDark ? '#1e293b' : '#ffffff',
-                color: isDark ? '#cbd5e1' : '#475569',
-                fontSize: '0.88rem',
-                fontWeight: '700',
-                cursor: 'pointer'
-              }}
-            >
-              Cancel
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', color: isDark ? '#94a3b8' : '#64748b' }}>
+              <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px #10b981' }}></span>
+              <span style={{ fontWeight: '600' }}>Editing: {ticketCode}</span>
+            </div>
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              style={{
-                padding: '0.65rem 1.5rem',
-                borderRadius: '8px',
-                border: 'none',
-                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-                color: '#ffffff',
-                fontSize: '0.88rem',
-                fontWeight: '800',
-                letterSpacing: '0.03em',
-                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
-                opacity: isSubmitting ? 0.7 : 1
-              }}
-            >
-              <FaSave size={13} />
-              <span>{isSubmitting ? 'Saving...' : 'Save Changes'}</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                style={{
+                  padding: '0.65rem 1.25rem',
+                  borderRadius: '8px',
+                  border: isDark ? '1px solid #334155' : '1px solid #cbd5e1',
+                  background: isDark ? '#1e293b' : '#ffffff',
+                  color: isDark ? '#cbd5e1' : '#475569',
+                  fontSize: '0.88rem',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                style={{
+                  padding: '0.65rem 1.6rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: isSubmitting ? '#64748b' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                  color: '#ffffff',
+                  fontSize: '0.88rem',
+                  fontWeight: '800',
+                  letterSpacing: '0.03em',
+                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
+                  opacity: isSubmitting ? 0.7 : 1
+                }}
+              >
+                <FaSave size={13} />
+                <span>{isSubmitting ? 'Saving...' : 'Save Changes'}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>
