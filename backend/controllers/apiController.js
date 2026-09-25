@@ -155,6 +155,11 @@ const dbToCoordinator = (c) => {
       if (match && match.game) game = match.game;
     } catch (_) {}
   }
+  if (!game && events.some(e => String(e).toLowerCase().includes('nontech-05'))) {
+    const n = String(c.name || '').toLowerCase();
+    if (n.includes('bala') || n.includes('suresh')) game = 'Free Fire';
+    else if (n.includes('adnan') || n.includes('zaid')) game = 'BGMI';
+  }
   return {
     id: c.id,
     name: c.name,
@@ -1442,6 +1447,28 @@ const enrichRegistrationRecord = (r) => {
     copy.paymentStatus = copy.payment_status;
   }
 
+  // Extract or infer esports game for Battle of Champions (FREE FIRE or BGMI)
+  let detectedGame = copy.game || copy.game_name || copy.gameName || '';
+  if (!detectedGame && copy.venue_snapshot && typeof copy.venue_snapshot === 'string' && copy.venue_snapshot.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(copy.venue_snapshot);
+      if (parsed.game) detectedGame = parsed.game;
+    } catch (_) {}
+  }
+  if (!detectedGame) {
+    const combinedStr = `${copy.teamName || ''} ${copy.eventName || ''} ${copy.notes || ''}`.toUpperCase();
+    if (combinedStr.includes('BGMI')) {
+      detectedGame = 'BGMI';
+    } else if (combinedStr.includes('FREE FIRE') || combinedStr.includes('FREEFIRE') || combinedStr.includes('FF')) {
+      detectedGame = 'FREE FIRE';
+    }
+  }
+  const isEsports = String(copy.eventId || '').toLowerCase() === 'nontech-05' || String(copy.eventName || '').toUpperCase().includes('BATTLE OF CHAMPIONS');
+  if (isEsports && !detectedGame) {
+    detectedGame = 'FREE FIRE';
+  }
+  copy.game = detectedGame ? (detectedGame.toUpperCase().includes('BGMI') ? 'BGMI' : 'FREE FIRE') : null;
+
   return copy;
 };
 
@@ -1704,10 +1731,9 @@ exports.getCoordinatorsByEvent = async (req, res) => {
       const gLower = game.toLowerCase().trim();
       matching = matching.filter(c => {
         const cGame = String(c.game || '').toLowerCase().trim();
-        if (!cGame) return true;
         if (cGame.includes('both')) return true;
         if (gLower.includes('free') || gLower.includes('fire')) {
-          return cGame.includes('fire');
+          return cGame.includes('fire') || cGame.includes('free');
         }
         if (gLower.includes('bgmi')) {
           return cGame.includes('bgmi');
@@ -1852,13 +1878,17 @@ const dbToDispatch = (d) => {
 
 exports.sendParticipantList = async (req, res) => {
   try {
-    const { eventId, eventName, coordinatorId, coordinatorName, coordinatorUsername } = req.body;
+    const { eventId, eventName, coordinatorId, coordinatorName, coordinatorUsername, gameScope } = req.body;
     if (!eventId || !coordinatorName) {
       return res.status(400).json({ success: false, message: 'Event ID and Coordinator Name are required' });
     }
 
     const dispatchId = Date.now().toString();
     const now = new Date().toISOString();
+
+    const formattedEventName = (gameScope && gameScope !== 'ALL')
+      ? `${eventName || eventId} (${gameScope})`
+      : (eventName || eventId);
 
     // Format display string with username so it fits existing Supabase schema
     const displayCoordName = coordinatorUsername && coordinatorUsername !== coordinatorName && !coordinatorName.includes(`@${coordinatorUsername}`)
@@ -1868,7 +1898,7 @@ exports.sendParticipantList = async (req, res) => {
     const dbPayload = {
       id: dispatchId,
       event_id: eventId,
-      event_name: eventName || eventId,
+      event_name: formattedEventName,
       coordinator_name: displayCoordName,
       dispatched_by: 'Admin',
       sent_at: now

@@ -386,8 +386,12 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
 
     if (isEsports && selectedEsportsGame) {
       const gUpper = selectedEsportsGame.toUpperCase().trim();
-      const cGame = String(c.game || '').toUpperCase().trim();
-      if (!cGame) return true;
+      let cGame = String(c.game || '').toUpperCase().trim();
+      if (!cGame) {
+        const cName = String(c.name || '').toLowerCase();
+        if (cName.includes('bala') || cName.includes('suresh')) cGame = 'FREE FIRE';
+        else if (cName.includes('adnan') || cName.includes('zaid')) cGame = 'BGMI';
+      }
       if (cGame.includes('BOTH')) return true;
       if (gUpper.includes('FREE') || gUpper.includes('FIRE')) {
         return cGame.includes('FIRE') || cGame.includes('FREE');
@@ -405,7 +409,12 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
     const roleStr = String(c.role || '').toLowerCase().trim();
     const isLead = !roleStr || roleStr.includes('lead');
     if (!isLead) return false;
-    const cGame = String(c.game || '').toUpperCase().trim();
+    let cGame = String(c.game || '').toUpperCase().trim();
+    if (!cGame) {
+      const cName = String(c.name || '').toLowerCase();
+      if (cName.includes('bala') || cName.includes('suresh')) cGame = 'FREE FIRE';
+      else if (cName.includes('adnan') || cName.includes('zaid')) cGame = 'BGMI';
+    }
     return cGame.includes('FIRE') || cGame.includes('FREE') || cGame.includes('BOTH');
   }) : [];
 
@@ -413,7 +422,12 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
     const roleStr = String(c.role || '').toLowerCase().trim();
     const isLead = !roleStr || roleStr.includes('lead');
     if (!isLead) return false;
-    const cGame = String(c.game || '').toUpperCase().trim();
+    let cGame = String(c.game || '').toUpperCase().trim();
+    if (!cGame) {
+      const cName = String(c.name || '').toLowerCase();
+      if (cName.includes('bala') || cName.includes('suresh')) cGame = 'FREE FIRE';
+      else if (cName.includes('adnan') || cName.includes('zaid')) cGame = 'BGMI';
+    }
     return cGame.includes('BGMI') || cGame.includes('BOTH');
   }) : [];
 
@@ -1238,51 +1252,57 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
                       </div>
 
                       <div className="rules-coords-grid">
-                        {coordsList.map((coord, idx) => (
-                          <div key={idx} className="rules-embedded-coord-chip">
-                            <div className="coord-chip-info">
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '3px' }}>
-                                <span className="coord-chip-badge">{coord.role || 'Lead Coordinator'}</span>
-                                {coord.game && (
-                                  <span
-                                    className={`rules-coord-game-pill ${
-                                      coord.game.toLowerCase().includes('fire') ? 'pill-ff' : 'pill-bgmi'
-                                    }`}
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                        {coordsList.map((coord, idx) => {
+                          const cGame = String(coord.game || '').toLowerCase();
+                          const isFF = cGame.includes('fire');
+                          const isBGMI = cGame.includes('bgmi');
+                          return (
+                            <div 
+                              key={idx} 
+                              className={`rules-embedded-coord-chip ${isFF ? 'coord-chip-ff' : (isBGMI ? 'coord-chip-bgmi' : '')}`}
+                            >
+                              <div className="coord-chip-info">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                  <span className="coord-chip-badge">{coord.role || 'Lead Coordinator'}</span>
+                                  {coord.game && (
+                                    <span
+                                      className={`rules-coord-game-pill ${isFF ? 'pill-ff' : 'pill-bgmi'}`}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                                    >
+                                      {isFF ? (
+                                        <><FaFire style={{ color: '#ff9d42' }} /> Free Fire</>
+                                      ) : (
+                                        <><FaCrosshairs style={{ color: '#38bdf8' }} /> BGMI</>
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                                <h4 className="coord-chip-name">{coord.name}</h4>
+                              </div>
+                              <div className="coord-chip-actions-group">
+                                <a
+                                  href={`tel:${coord.phone}`}
+                                  className="coord-chip-call-btn"
+                                  title={`Call ${coord.name}`}
+                                >
+                                  <FaPhoneAlt size={12} style={{ marginRight: '6px' }} />
+                                  <span>{coord.displayPhone || coord.phone}</span>
+                                </a>
+                                {(coord.whatsapp || coord.phone) && (
+                                  <a
+                                    href={`https://wa.me/91${String(coord.whatsapp || coord.phone).replace(/\D/g, '').slice(-10)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="coord-chip-wa-btn"
+                                    title={`WhatsApp ${coord.name}`}
                                   >
-                                    {coord.game.toLowerCase().includes('fire') ? (
-                                      <><FaFire style={{ color: '#ff9d42' }} /> Free Fire</>
-                                    ) : (
-                                      <><FaCrosshairs style={{ color: '#38bdf8' }} /> BGMI</>
-                                    )}
-                                  </span>
+                                    <FaWhatsapp size={15} />
+                                  </a>
                                 )}
                               </div>
-                              <h4 className="coord-chip-name">{coord.name}</h4>
                             </div>
-                            <div className="coord-chip-actions-group">
-                              <a
-                                href={`tel:${coord.phone}`}
-                                className="coord-chip-call-btn"
-                                title={`Call ${coord.name}`}
-                              >
-                                <FaPhoneAlt size={11} style={{ marginRight: '5px' }} />
-                                <span>{coord.displayPhone || coord.phone}</span>
-                              </a>
-                              {(coord.whatsapp || coord.phone) && (
-                                <a
-                                  href={`https://wa.me/91${String(coord.whatsapp || coord.phone).replace(/\D/g, '').slice(-10)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="coord-chip-wa-btn"
-                                  title={`WhatsApp ${coord.name}`}
-                                >
-                                  <FaWhatsapp size={14} />
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </motion.div>
                   )}

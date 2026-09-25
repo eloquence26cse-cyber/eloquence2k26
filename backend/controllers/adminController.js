@@ -143,6 +143,11 @@ const dbToCoordinator = (c) => {
       if (match && match.game) game = match.game;
     } catch (_) {}
   }
+  if (!game && events.some(e => String(e).toLowerCase().includes('nontech-05'))) {
+    const n = String(c.name || '').toLowerCase();
+    if (n.includes('bala') || n.includes('suresh')) game = 'Free Fire';
+    else if (n.includes('adnan') || n.includes('zaid')) game = 'BGMI';
+  }
   return {
     id: c.id,
     name: c.name,
@@ -2446,7 +2451,8 @@ exports.updateRegistration = async (req, res) => {
     upiUtr, upi_utr, transactionId, transaction_id,
     attendanceStatus, attendance_status,
     isVerified, is_verified,
-    flagReason, flag_reason
+    flagReason, flag_reason,
+    game
   } = req.body;
 
   try {
@@ -2507,6 +2513,17 @@ exports.updateRegistration = async (req, res) => {
     }
     if (totalFee !== undefined || totalAmount !== undefined || total_fee !== undefined) {
       updatePayload.total_fee = Number(totalFee ?? totalAmount ?? total_fee ?? 0);
+    }
+    if (game !== undefined) {
+      updatePayload.game = game ? String(game).trim().toUpperCase() : null;
+      try {
+        let vSnap = {};
+        if (existingReg?.venue_snapshot && typeof existingReg.venue_snapshot === 'string' && existingReg.venue_snapshot.startsWith('{')) {
+          vSnap = JSON.parse(existingReg.venue_snapshot);
+        }
+        vSnap.game = updatePayload.game;
+        updatePayload.venue_snapshot = JSON.stringify(vSnap);
+      } catch (_) {}
     }
     if (paymentStatus !== undefined || payment_status !== undefined) {
       updatePayload.payment_status = String(paymentStatus || payment_status || 'PENDING').toUpperCase();
