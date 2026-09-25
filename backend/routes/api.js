@@ -41,6 +41,18 @@ router.get('/registrations', apiController.getRegistrations);
 router.get('/registrations/:id', apiController.getRegistrationById);
 router.post('/registrations/import-pdf', uploadPdf.any(), adminController.importPdfPass);
 router.post('/registrations/save-imported', adminController.saveImportedRegistrations);
+
+// ── Separate DB Table: Offline Registrations ──────────────────────────────────
+router.get('/offline-registrations', apiController.getOfflineRegistrations);
+router.post('/offline-registrations/import', handleMultipartOrJson, apiController.importOfflineRegistrations);
+router.post('/offline-registrations/batch', handleMultipartOrJson, apiController.importOfflineRegistrations);
+router.post('/offline-registrations/sync', apiController.syncOfflineRegistrationsWithSupabase);
+router.get('/offline-registrations/sync', apiController.syncOfflineRegistrationsWithSupabase);
+router.get('/offline-registrations/:id', apiController.getOfflineRegistrationById);
+router.post('/offline-registrations', handleMultipartOrJson, apiController.createOfflineRegistration);
+router.put('/offline-registrations/:id', handleMultipartOrJson, apiController.updateOfflineRegistration);
+router.delete('/offline-registrations/:id', apiController.deleteOfflineRegistration);
+
 router.get('/events', apiController.getPublicEvents);
 router.get('/registration-status', apiController.getRegistrationStatus);
 

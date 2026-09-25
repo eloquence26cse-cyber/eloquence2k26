@@ -1,5 +1,22 @@
 [
   {
+    "id": "sponsor-elite-01",
+    "name": "RIDHI CHATS",
+    "company_name": "RIDHI CHATS",
+    "logo": "/sponsors/sponsor-1789625252690-2603.jpg",
+    "description": "CHATS FOOD SHOP",
+    "website": "",
+    "contact_name": "SIYA",
+    "contact_email": "",
+    "contact_phone": "8667329339",
+    "category": "Elite",
+    "display_order": 1,
+    "is_active": true,
+    "created_at": "2026-09-16T10:16:18.441858+00:00",
+    "updated_at": "2026-09-17T06:07:33.819+00:00",
+    "location_url": "https://maps.google.com/?q=Ridhi+Chats"
+  },
+  {
     "id": "sponsor-premium-02",
     "name": "LITTLE PIRATE",
     "company_name": "SHOP",
@@ -100,23 +117,6 @@
     "created_at": "2026-09-16T18:20:15.087589+00:00",
     "updated_at": "2026-09-17T04:08:14.504+00:00",
     "location_url": ""
-  },
-  {
-    "id": "sponsor-elite-01",
-    "name": "RIDHI CHATS",
-    "company_name": "RIDHI CHATS",
-    "logo": "/sponsors/sponsor-1789625252690-2603.jpg",
-    "description": "CHATS FOOD SHOP",
-    "website": "",
-    "contact_name": "SIYA",
-    "contact_email": "",
-    "contact_phone": "8667329339",
-    "category": "Elite",
-    "display_order": 1,
-    "is_active": true,
-    "created_at": "2026-09-16T10:16:18.441858+00:00",
-    "updated_at": "2026-09-17T06:07:33.819+00:00",
-    "location_url": "https://maps.google.com/?q=Ridhi+Chats"
   },
   {
     "id": "sponsor-1790145545217",

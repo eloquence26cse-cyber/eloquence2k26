@@ -851,11 +851,12 @@ exports.registerEvent = async (req, res) => {
   const expectedTotalFee = totalMemberCount * canonicalPerHead;
   const clientFee = Number(req.body.totalFee) || 0;
   const finalTotalFee = clientFee > 0 ? clientFee : expectedTotalFee;
-  const paymentMethod = 'UPI_QR';
+  const paymentMethod = req.body.paymentMethod || (fields && fields.paymentMethod) || 'UPI_QR';
+  const isOfflineDesk = String(paymentMethod || '').toUpperCase() === 'ON_SITE_DESK' || req.body.isOffline === true || (fields && fields.isOffline === true);
 
-  // Security enforcement: All online web registrations require verification
-  const initialVerificationStatus = 'pending';
-  const initialPaymentStatus = 'PENDING';
+  // Security enforcement: All online web registrations require verification, on-site desk entries are verified on spot
+  const initialVerificationStatus = isOfflineDesk ? 'verified' : 'pending';
+  const initialPaymentStatus = isOfflineDesk ? 'PAID' : 'PENDING';
 
   // Handle payment screenshot if file was uploaded or path passed
   let screenshotPath = (fields && (fields.paymentScreenshotPath || fields.payment_screenshot_path)) || req.body.paymentScreenshotPath || req.body.payment_screenshot_path || null;
@@ -948,71 +949,134 @@ exports.registerEvent = async (req, res) => {
       }]);
     }
 
-    // Insert into registrations table
-    let regInsertPayload = {
-      event_id: currentEvent.id,
-      ticket_code: ticketCode,
-      team_name: fields.teamName || null,
-      full_name: fields.fullName,
-      email: fields.email,
-      phone: fields.phone,
-      college: fields.college || 'C. Abdul Hakeem College of Engg & Tech',
-      department: fields.department || 'CSE',
-      year: fields.year || '3rd Year',
-      members_count: 1 + validTeamMembers.length,
-      total_fee: finalTotalFee,
-      payment_status: initialPaymentStatus,
-      registration_status: 'confirmed',
-      payment_method: paymentMethod || 'UPI_QR',
-      razorpay_payment_id: cleanUtr || null,
-      upi_utr: cleanUtr || null,
-      verification_status: initialVerificationStatus,
-      venue_snapshot: venueSnapshotStr,
-      timing_snapshot: currentEvent.timing || '10:00 AM – 1:00 PM',
-      is_verified: false
-    };
+    if (isOfflineDesk) {
+      // ── STORE IN SEPARATE TABLE: public.offline_registrations ──
+      let offlineInsertPayload = {
+        event_id: currentEvent.id,
+        ticket_code: ticketCode,
+        team_name: fields.teamName || null,
+        full_name: fields.fullName,
+        email: fields.email || `${fields.fullName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'participant'}@onsite.cahcet.edu`,
+        phone: fields.phone,
+        whatsapp: fields.whatsapp || fields.phone,
+        college: fields.college || 'C. Abdul Hakeem College of Engg & Tech',
+        department: fields.department || 'CSE',
+        year: fields.year || '3rd Year',
+        members_count: 1 + validTeamMembers.length,
+        team_members: validTeamMembers,
+        total_fee: finalTotalFee,
+        payment_status: 'PAID',
+        registration_status: 'CONFIRMED',
+        payment_method: 'ON_SITE_DESK',
+        venue_snapshot: venueSnapshotStr,
+        timing_snapshot: currentEvent.timing || '10:00 AM – 1:00 PM',
+        onsite_unique_id: fields.onsiteUniqueId || ticketCode,
+        is_verified: false,
+        attendance_status: 'pending'
+      };
 
-    let { data: regData, error: regError } = await supabase
-      .from('registrations')
-      .insert([regInsertPayload])
-      .select('id');
+      let dbRegId = null;
+      try {
+        let { data: offData, error: offError } = await supabase
+          .from('offline_registrations')
+          .insert([offlineInsertPayload])
+          .select('id');
 
-    if (regError) {
-      console.warn('[Supabase Registration Warning]:', regError.message);
-      // If error occurs due to columns not in table schema, fallback without them
-      if (regError.message && (regError.message.includes('upi_utr') || regError.message.includes('verification_status') || regError.message.includes('payment_screenshot_path'))) {
-        delete regInsertPayload.upi_utr;
-        delete regInsertPayload.verification_status;
-        delete regInsertPayload.payment_screenshot_path;
-        const fbRes = await supabase.from('registrations').insert([regInsertPayload]).select('id');
-        regData = fbRes.data;
-        regError = fbRes.error;
+        if (!offError && offData && offData[0]) {
+          dbRegId = offData[0].id;
+          if (validTeamMembers.length > 0) {
+            await insertOfflineMembersHelper(dbRegId, ticketCode, validTeamMembers);
+          }
+        } else if (offError) {
+          console.warn('[Offline Regs Supabase Note]:', offError.message);
+        }
+      } catch (supaOffErr) {
+        console.warn('[Offline Regs Supabase Exception]:', supaOffErr.message);
       }
-    }
 
-    if (regError) {
-      console.error('[Supabase Registration Error]:', regError.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Database error saving registration: ' + (regError.message || 'Unknown database error')
-      });
-    }
+      // Always persist to local cache/storage file as well
+      const localOffList = readOfflineRegistrations();
+      const localOffItem = {
+        ...offlineInsertPayload,
+        id: dbRegId || registrationId,
+        registrationId: dbRegId || registrationId,
+        eventName: currentEvent.name,
+        category: currentEvent.category,
+        venue: currentEvent.venue,
+        timing: currentEvent.timing
+      };
+      localOffList.unshift(localOffItem);
+      writeOfflineRegistrations(localOffList);
 
-    if (regData && regData[0]) {
-      const dbRegId = regData[0].id;
-      ticketData.id = dbRegId;
-      ticketData.registrationId = dbRegId;
+      ticketData.id = dbRegId || registrationId;
+      ticketData.registrationId = dbRegId || registrationId;
+    } else {
+      // ── STORE IN ONLINE TABLE: public.registrations ──
+      let regInsertPayload = {
+        event_id: currentEvent.id,
+        ticket_code: ticketCode,
+        team_name: fields.teamName || null,
+        full_name: fields.fullName,
+        email: fields.email,
+        phone: fields.phone,
+        college: fields.college || 'C. Abdul Hakeem College of Engg & Tech',
+        department: fields.department || 'CSE',
+        year: fields.year || '3rd Year',
+        members_count: 1 + validTeamMembers.length,
+        total_fee: finalTotalFee,
+        payment_status: initialPaymentStatus,
+        registration_status: 'confirmed',
+        payment_method: paymentMethod || 'UPI_QR',
+        razorpay_payment_id: cleanUtr || null,
+        upi_utr: cleanUtr || null,
+        verification_status: initialVerificationStatus,
+        venue_snapshot: venueSnapshotStr,
+        timing_snapshot: currentEvent.timing || '10:00 AM – 1:00 PM',
+        is_verified: false
+      };
 
-      if (validTeamMembers.length > 0) {
-        const membersToInsert = validTeamMembers.map((member, idx) => ({
-          registration_id: dbRegId,
-          member_number: idx + 2,
-          member_name: (typeof member === 'string' ? member : (member.name || '')).trim()
-        }));
+      let { data: regData, error: regError } = await supabase
+        .from('registrations')
+        .insert([regInsertPayload])
+        .select('id');
 
-        const { error: membersErr } = await supabase.from('registration_members').insert(membersToInsert);
-        if (membersErr) {
-          console.warn('[Registration Members Insert Warning]:', membersErr.message);
+      if (regError) {
+        console.warn('[Supabase Registration Warning]:', regError.message);
+        // If error occurs due to columns not in table schema, fallback without them
+        if (regError.message && (regError.message.includes('upi_utr') || regError.message.includes('verification_status') || regError.message.includes('payment_screenshot_path'))) {
+          delete regInsertPayload.upi_utr;
+          delete regInsertPayload.verification_status;
+          delete regInsertPayload.payment_screenshot_path;
+          const fbRes = await supabase.from('registrations').insert([regInsertPayload]).select('id');
+          regData = fbRes.data;
+          regError = fbRes.error;
+        }
+      }
+
+      if (regError) {
+        console.error('[Supabase Registration Error]:', regError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Database error saving registration: ' + (regError.message || 'Unknown database error')
+        });
+      }
+
+      if (regData && regData[0]) {
+        const dbRegId = regData[0].id;
+        ticketData.id = dbRegId;
+        ticketData.registrationId = dbRegId;
+
+        if (validTeamMembers.length > 0) {
+          const membersToInsert = validTeamMembers.map((member, idx) => ({
+            registration_id: dbRegId,
+            member_number: idx + 2,
+            member_name: (typeof member === 'string' ? member : (member.name || '')).trim()
+          }));
+
+          const { error: membersErr } = await supabase.from('registration_members').insert(membersToInsert);
+          if (membersErr) {
+            console.warn('[Registration Members Insert Warning]:', membersErr.message);
+          }
         }
       }
     }
@@ -1389,10 +1453,18 @@ const enrichRegistrationRecord = (r) => {
   copy.payment_screenshot_path = copy.payment_screenshot_path || copy.paymentScreenshotPath || null;
   copy.paymentScreenshotPath = copy.payment_screenshot_path;
 
-  // Map joined registration_members table if present
-  if (Array.isArray(copy.registration_members) && copy.registration_members.length > 0) {
+  // Map joined registration_members or offline_registration_members table if present
+  const joinedMembers = (Array.isArray(copy.registration_members) && copy.registration_members.length > 0)
+    ? copy.registration_members
+    : ((Array.isArray(copy.offline_registration_members) && copy.offline_registration_members.length > 0)
+        ? copy.offline_registration_members
+        : ((Array.isArray(copy.offline_registrations_member) && copy.offline_registrations_member.length > 0)
+            ? copy.offline_registrations_member
+            : null));
+
+  if (joinedMembers && joinedMembers.length > 0) {
     if (!copy.teamMembers || copy.teamMembers.length === 0) {
-      copy.teamMembers = copy.registration_members.map((m, idx) => ({
+      copy.teamMembers = joinedMembers.map((m, idx) => ({
         memberNumber: m.member_number || idx + 2,
         fullName: m.member_name || m.name || m.fullName || `Member ${idx + 2}`,
         name: m.member_name || m.name || m.fullName || `Member ${idx + 2}`,
@@ -1405,7 +1477,7 @@ const enrichRegistrationRecord = (r) => {
       }));
     }
     if (!copy.teamMembersList || copy.teamMembersList.length === 0) {
-      copy.teamMembersList = copy.registration_members.map(m => m.member_name || m.name || m.fullName || '');
+      copy.teamMembersList = joinedMembers.map(m => m.member_name || m.name || m.fullName || '');
     }
   }
 
@@ -1878,7 +1950,7 @@ const dbToDispatch = (d) => {
 
 exports.sendParticipantList = async (req, res) => {
   try {
-    const { eventId, eventName, coordinatorId, coordinatorName, coordinatorUsername, gameScope } = req.body;
+    const { eventId, eventName, coordinatorId, coordinatorName, coordinatorUsername, gameScope, dispatchScope, registrationType } = req.body;
     if (!eventId || !coordinatorName) {
       return res.status(400).json({ success: false, message: 'Event ID and Coordinator Name are required' });
     }
@@ -1886,9 +1958,21 @@ exports.sendParticipantList = async (req, res) => {
     const dispatchId = Date.now().toString();
     const now = new Date().toISOString();
 
-    const formattedEventName = (gameScope && gameScope !== 'ALL')
+    const scopeType = (registrationType || dispatchScope || 'ALL').toUpperCase();
+    let scopeSuffix = '';
+    if (scopeType === 'OFFLINE') {
+      scopeSuffix = ' [OFFLINE DESK]';
+    } else if (scopeType === 'ONLINE') {
+      scopeSuffix = ' [ONLINE]';
+    }
+
+    let formattedEventName = (gameScope && gameScope !== 'ALL')
       ? `${eventName || eventId} (${gameScope})`
       : (eventName || eventId);
+
+    if (scopeSuffix) {
+      formattedEventName = `${formattedEventName}${scopeSuffix}`;
+    }
 
     // Format display string with username so it fits existing Supabase schema
     const displayCoordName = coordinatorUsername && coordinatorUsername !== coordinatorName && !coordinatorName.includes(`@${coordinatorUsername}`)
@@ -2478,4 +2562,556 @@ exports.deleteEventScore = async (req, res) => {
   }
 };
 
+// ==================== OFFLINE REGISTRATIONS SEPARATE TABLE CONTROLLERS ====================
+const OFFLINE_REG_FILE = path.join(DATA_DIR, 'offline_registrations.json');
+
+const readOfflineRegistrations = () => {
+  try {
+    if (!fs.existsSync(OFFLINE_REG_FILE)) {
+      fs.writeFileSync(OFFLINE_REG_FILE, '[]', 'utf-8');
+      return [];
+    }
+    return JSON.parse(fs.readFileSync(OFFLINE_REG_FILE, 'utf-8') || '[]');
+  } catch (e) {
+    return [];
+  }
+};
+
+const writeOfflineRegistrations = (data) => {
+  try {
+    fs.writeFileSync(OFFLINE_REG_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('[Offline Regs Local Write Warning]:', e.message);
+  }
+};
+
+// Helper: Insert secondary team members into Supabase offline_registration_members (or alias offline_registrations_member)
+async function insertOfflineMembersHelper(dbRegId, ticketCode, membersList) {
+  if (!Array.isArray(membersList) || membersList.length === 0) return [];
+  const validRecords = membersList.map((m, idx) => {
+    const isObj = typeof m === 'object' && m !== null;
+    const name = (isObj ? (m.fullName || m.name || m.member_name || '') : String(m)).trim();
+    if (!name) return null;
+    return {
+      registration_id: dbRegId,
+      ticket_code: ticketCode,
+      member_number: idx + 2,
+      member_name: name,
+      email: isObj ? (m.email || null) : null,
+      phone: isObj ? (m.phone || null) : null,
+      college: isObj ? (m.college || null) : null,
+      department: isObj ? (m.department || null) : null,
+      year: isObj ? (m.year || null) : null
+    };
+  }).filter(Boolean);
+
+  if (validRecords.length === 0) return [];
+
+  try {
+    // 1. Insert into public.offline_registration_members
+    const { data: d1, error: e1 } = await supabase.from('offline_registration_members').insert(validRecords).select('*');
+    if (e1) {
+      console.warn('[Supabase offline_registration_members Notice]:', e1.message);
+      // Fallback: try singular table name public.offline_registrations_member
+      const { data: d2, error: e2 } = await supabase.from('offline_registrations_member').insert(validRecords).select('*');
+      if (e2) {
+        console.warn('[Supabase offline_registrations_member Notice]:', e2.message);
+      }
+      return d2 || validRecords;
+    }
+    return d1 || validRecords;
+  } catch (err) {
+    console.warn('[Offline Members Insert Exception]:', err.message);
+    return validRecords;
+  }
+}
+
+// Helper: Save single offline registration record to Supabase & local cache
+async function saveOfflineRegistrationRecord(rec) {
+  let fields = rec.fields || rec;
+  let currentEvent = rec.currentEvent || {};
+  const eventId = rec.eventId || rec.event_id || currentEvent.id || fields.eventId || 'tech-01';
+
+  // Ensure event exists in DB before registration foreign key constraint
+  try {
+    const { data: existingEv } = await supabase.from('events').select('id').eq('id', eventId).maybeSingle();
+    if (!existingEv) {
+      await supabase.from('events').insert([{
+        id: eventId,
+        number: '99',
+        name: rec.eventName || currentEvent.name || 'Symposium Event',
+        category: rec.category || currentEvent.category || 'technical',
+        team_size: (fields.teamName || rec.teamName) ? 'Team' : 'Individual',
+        min_members: 1,
+        max_members: 10,
+        fee_type: 'per_head',
+        fee_per_head: 50
+      }]);
+    }
+  } catch (eEv) {
+    console.warn('[Offline Event Ensure Notice]:', eEv.message);
+  }
+
+  const fullName = (fields.fullName || fields.teamName || rec.fullName || rec.teamName || rec.name || 'Participant').trim();
+  const phone = (fields.phone || rec.phone || '').trim();
+  const email = (fields.email || rec.email || `${fullName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'participant'}@onsite.cahcet.edu`).trim();
+  const college = fields.college || rec.college || 'C. Abdul Hakeem College of Engineering & Technology';
+  const department = fields.department || rec.department || 'CSE';
+  const year = fields.year || rec.year || '3rd Year';
+  const teamName = fields.teamName || rec.teamName || rec.team_name || null;
+  const totalFee = Number(rec.totalFee || rec.total_fee || rec.fee || fields.totalFee || currentEvent.feePerHead || 50);
+
+  const rawMembers = fields.teamMembers || rec.teamMembers || rec.team_members || [];
+  const validMembers = (Array.isArray(rawMembers) ? rawMembers : [])
+    .filter(m => (typeof m === 'string' ? m.trim().length > 0 : (m && (m.fullName || m.name || m.member_name))));
+
+  const ticketCode = rec.ticketCode || rec.ticket_code || fields.onsiteUniqueId || rec.onsiteUniqueId || rec.id || `ONSITE-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  const venueSnapshot = JSON.stringify({
+    venue: currentEvent.venue || rec.venue || 'CSE Dept Labs',
+    payment_method: 'ON_SITE_DESK',
+    timing: currentEvent.timing || rec.timing || '10:00 AM',
+    team_members: validMembers,
+    imported_from_paper: true,
+    file_name: rec.fileName || null,
+    imported_at: new Date().toISOString()
+  });
+
+  const offlinePayload = {
+    ticket_code: ticketCode,
+    event_id: eventId,
+    full_name: fullName,
+    email: email,
+    phone: phone || '9876543210',
+    whatsapp: fields.whatsapp || rec.whatsapp || phone || '9876543210',
+    college: college,
+    department: department,
+    year: year,
+    team_name: teamName,
+    members_count: Math.max(1, 1 + validMembers.length),
+    team_members: validMembers,
+    total_fee: totalFee,
+    payment_status: 'PAID',
+    registration_status: 'CONFIRMED',
+    payment_method: 'ON_SITE_DESK',
+    venue_snapshot: venueSnapshot,
+    timing_snapshot: currentEvent.timing || rec.timing || '10:00 AM – 1:00 PM',
+    onsite_unique_id: fields.onsiteUniqueId || rec.onsiteUniqueId || rec.id || ticketCode,
+    is_verified: true,
+    attendance_status: 'pending',
+    updated_at: new Date().toISOString()
+  };
+
+  let dbRegId = null;
+  // Check if ticket already exists in offline_registrations
+  let { data: existingRow } = await supabase.from('offline_registrations').select('id').eq('ticket_code', ticketCode).maybeSingle();
+
+  if (existingRow && existingRow.id) {
+    dbRegId = existingRow.id;
+    await supabase.from('offline_registrations').update(offlinePayload).eq('id', dbRegId);
+    // Delete existing members and re-insert
+    try {
+      await supabase.from('offline_registration_members').delete().eq('registration_id', dbRegId);
+      await supabase.from('offline_registrations_member').delete().eq('registration_id', dbRegId);
+    } catch (eDel) {}
+  } else {
+    offlinePayload.created_at = new Date().toISOString();
+    const { data: insData, error: insErr } = await supabase.from('offline_registrations').insert([offlinePayload]).select('id');
+    if (!insErr && insData && insData[0]) {
+      dbRegId = insData[0].id;
+    } else if (insErr) {
+      console.warn('[Offline Reg Insert Note]:', insErr.message);
+    }
+  }
+
+  // Insert secondary members into offline_registration_members table
+  if (dbRegId && validMembers.length > 0) {
+    await insertOfflineMembersHelper(dbRegId, ticketCode, validMembers);
+  }
+
+  // Also update local cache
+  const localList = readOfflineRegistrations();
+  const existingIdx = localList.findIndex(r => r.ticket_code === ticketCode || r.ticketCode === ticketCode || (dbRegId && r.id === dbRegId));
+  const savedItem = {
+    ...offlinePayload,
+    id: dbRegId || ticketCode,
+    registrationId: dbRegId || ticketCode,
+    eventName: rec.eventName || currentEvent.name || 'Symposium Event',
+    category: rec.category || currentEvent.category || 'technical'
+  };
+
+  if (existingIdx !== -1) {
+    localList[existingIdx] = savedItem;
+  } else {
+    localList.unshift(savedItem);
+  }
+  writeOfflineRegistrations(localList);
+
+  try {
+    const { broadcastRegistrationUpdate } = require('../config/websocket');
+    broadcastRegistrationUpdate('CREATE_OFFLINE', savedItem);
+  } catch (eWs) {}
+
+  return savedItem;
+}
+
+exports.getOfflineRegistrations = async (req, res) => {
+  try {
+    const { eventId, category, status } = req.query;
+    let offlineList = [];
+    let fromDb = false;
+
+    try {
+      let query = supabase
+        .from('offline_registrations')
+        .select(`*, ${REGISTRATION_EVENT_FIELDS}, offline_registration_members(*)`)
+        .order('created_at', { ascending: false });
+
+      if (eventId) query = query.eq('event_id', eventId);
+
+      const { data: dbData, error: dbError } = await query;
+      if (!dbError && Array.isArray(dbData)) {
+        offlineList = dbData;
+        fromDb = true;
+        // Keep local cache in sync
+        writeOfflineRegistrations(dbData);
+      } else if (dbError) {
+        console.warn('[Supabase Offline Regs Query Note]:', dbError.message);
+      }
+    } catch (e) {
+      console.warn('[Offline Regs DB Query Exception]:', e.message);
+    }
+
+    if (!fromDb) {
+      offlineList = readOfflineRegistrations();
+      if (eventId) {
+        offlineList = offlineList.filter(r => (r.event_id || r.eventId) === eventId);
+      }
+    }
+
+    let enriched = (offlineList || []).map(r => {
+      const copy = enrichRegistrationRecord(r);
+      copy.payment_method = 'ON_SITE_DESK';
+      copy.paymentMethod = 'ON_SITE_DESK';
+      copy.isOffline = true;
+      return copy;
+    });
+
+    if (category) {
+      enriched = enriched.filter(r => (r.eventCategory || r.category || '').toLowerCase() === category.toLowerCase());
+    }
+    if (status) {
+      enriched = enriched.filter(r => (r.payment_status || r.paymentStatus || r.registration_status || '').toLowerCase() === status.toLowerCase());
+    }
+
+    return res.json({
+      success: true,
+      count: enriched.length,
+      data: enriched,
+      registrations: enriched
+    });
+  } catch (err) {
+    console.error('getOfflineRegistrations error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to retrieve offline registrations' });
+  }
+};
+
+exports.getOfflineRegistrationById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const normId = String(id).trim();
+
+    try {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normId);
+      let query = supabase.from('offline_registrations').select(`*, ${REGISTRATION_EVENT_FIELDS}, offline_registration_members(*)`);
+      if (isUUID) {
+        query = query.eq('id', normId).maybeSingle();
+      } else {
+        query = query.ilike('ticket_code', normId).maybeSingle();
+      }
+      const { data, error } = await query;
+      if (!error && data) {
+        const copy = enrichRegistrationRecord(data);
+        copy.payment_method = 'ON_SITE_DESK';
+        copy.paymentMethod = 'ON_SITE_DESK';
+        return res.json({ success: true, data: copy });
+      }
+    } catch (e) {}
+
+    const local = readOfflineRegistrations();
+    const found = local.find(r => r.id === normId || r.ticket_code === normId || r.ticketCode === normId);
+    if (found) {
+      const copy = enrichRegistrationRecord(found);
+      copy.payment_method = 'ON_SITE_DESK';
+      copy.paymentMethod = 'ON_SITE_DESK';
+      return res.json({ success: true, data: copy });
+    }
+
+    return res.status(404).json({ success: false, message: 'Offline registration record not found' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch offline registration' });
+  }
+};
+
+exports.createOfflineRegistration = async (req, res) => {
+  try {
+    let currentEvent = req.body.currentEvent || {};
+    if (typeof currentEvent === 'string') {
+      try { currentEvent = JSON.parse(currentEvent); } catch (e) {}
+    }
+    let fields = req.body.fields || req.body;
+    if (typeof fields === 'string') {
+      try { fields = JSON.parse(fields); } catch (e) {}
+    }
+
+    const eventId = currentEvent.id || fields.eventId || req.body.eventId;
+    const fullName = (fields.fullName || fields.name || req.body.fullName || 'Participant').trim();
+    const phone = (fields.phone || req.body.phone || '').trim();
+    const email = (fields.email || req.body.email || `${fullName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'participant'}@onsite.cahcet.edu`).trim();
+    const college = fields.college || req.body.college || 'C. Abdul Hakeem College of Engineering & Technology';
+    const department = fields.department || req.body.department || 'CSE';
+    const year = fields.year || req.body.year || '3rd Year';
+    const teamName = fields.teamName || req.body.teamName || null;
+    const totalFee = Number(req.body.totalFee || fields.totalFee || currentEvent.feePerHead || 50);
+
+    const rawMembers = fields.teamMembers || req.body.teamMembers || [];
+    const validMembers = (Array.isArray(rawMembers) ? rawMembers : [])
+      .filter(m => (typeof m === 'string' ? m.trim().length > 0 : (m && (m.fullName || m.name))))
+      .map(m => typeof m === 'string' ? m.trim() : (m.fullName || m.name || '').trim());
+
+    const catPrefix = (currentEvent.category || '').toLowerCase() === 'technical' ? 'TCH' : 'NT';
+    const ticketCode = fields.onsiteUniqueId || req.body.onsiteUniqueId || `ELQ26-${catPrefix}-OFF${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const venueSnapshot = JSON.stringify({
+      venue: currentEvent.venue || 'CSE Dept Labs',
+      payment_method: 'ON_SITE_DESK',
+      timing: currentEvent.timing || '10:00 AM',
+      team_members: validMembers
+    });
+
+    const offlineRecord = {
+      ticket_code: ticketCode,
+      event_id: eventId || null,
+      full_name: fullName,
+      email: email,
+      phone: phone,
+      whatsapp: fields.whatsapp || phone,
+      college: college,
+      department: department,
+      year: year,
+      team_name: teamName,
+      members_count: 1 + validMembers.length,
+      team_members: validMembers,
+      total_fee: totalFee,
+      payment_status: 'PAID',
+      registration_status: 'CONFIRMED',
+      payment_method: 'ON_SITE_DESK',
+      venue_snapshot: venueSnapshot,
+      timing_snapshot: currentEvent.timing || '10:00 AM – 1:00 PM',
+      onsite_unique_id: fields.onsiteUniqueId || ticketCode,
+      is_verified: false,
+      attendance_status: 'pending',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    let dbRegId = null;
+    try {
+      const { data: dbData, error: dbErr } = await supabase
+        .from('offline_registrations')
+        .insert([offlineRecord])
+        .select('id');
+
+      if (!dbErr && dbData && dbData[0]) {
+        dbRegId = dbData[0].id;
+        if (validMembers.length > 0) {
+          await insertOfflineMembersHelper(dbRegId, ticketCode, validMembers);
+        }
+      } else if (dbErr) {
+        console.warn('[Supabase offline_registrations insert note]:', dbErr.message);
+      }
+    } catch (e) {
+      console.warn('[Supabase offline_registrations exception]:', e.message);
+    }
+
+    const localList = readOfflineRegistrations();
+    const finalRecord = {
+      ...offlineRecord,
+      id: dbRegId || ticketCode,
+      registrationId: dbRegId || ticketCode,
+      eventName: currentEvent.name || 'Symposium Event',
+      category: currentEvent.category || 'technical'
+    };
+    localList.unshift(finalRecord);
+    writeOfflineRegistrations(localList);
+
+    // Broadcast WebSocket
+    try {
+      const { broadcastRegistrationUpdate } = require('../config/websocket');
+      broadcastRegistrationUpdate('CREATE_OFFLINE', finalRecord);
+    } catch (e) {}
+
+    return res.json({
+      success: true,
+      message: 'Offline registration recorded in separate table',
+      ticketData: finalRecord,
+      data: finalRecord
+    });
+  } catch (err) {
+    console.error('createOfflineRegistration error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to create offline registration' });
+  }
+};
+
+// ── BATCH / SINGLE IMPORT OF OFFLINE DESK REGISTRATIONS ─────────────────────────
+exports.importOfflineRegistrations = async (req, res) => {
+  try {
+    let records = req.body.registrations || req.body.records || req.body.data || (Array.isArray(req.body) ? req.body : [req.body]);
+    if (!Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ success: false, message: 'No offline registration records provided to import' });
+    }
+
+    const savedRecords = [];
+    const errors = [];
+
+    for (const rec of records) {
+      try {
+        const result = await saveOfflineRegistrationRecord(rec);
+        savedRecords.push(result);
+      } catch (err) {
+        errors.push({ ticketCode: rec.ticketCode || rec.id || rec.ticket_code, error: err.message });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Successfully linked & saved ${savedRecords.length} offline registration(s) into Supabase offline_registrations and offline_registration_members tables.`,
+      savedCount: savedRecords.length,
+      saved: savedRecords,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (err) {
+    console.error('importOfflineRegistrations error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to import offline registrations: ' + err.message });
+  }
+};
+
+// ── BIDIRECTIONAL SYNC WITH SUPABASE ──────────────────────────────────────────
+exports.syncOfflineRegistrationsWithSupabase = async (req, res) => {
+  try {
+    // 1. Fetch live records from Supabase
+    const { data: supaData, error: supaErr } = await supabase
+      .from('offline_registrations')
+      .select(`*, ${REGISTRATION_EVENT_FIELDS}, offline_registration_members(*)`)
+      .order('created_at', { ascending: false });
+
+    if (supaErr) {
+      console.error('[Offline Sync] Supabase query error:', supaErr.message);
+      return res.status(500).json({ success: false, message: 'Supabase error: ' + supaErr.message });
+    }
+
+    const dbRecords = Array.isArray(supaData) ? supaData : [];
+
+    // 2. Push any local offline records that are missing from Supabase
+    const localRecords = readOfflineRegistrations();
+    let pushedCount = 0;
+
+    for (const local of localRecords) {
+      const ticket = local.ticket_code || local.ticketCode;
+      const existsInDb = dbRecords.some(r => r.ticket_code === ticket || (local.id && r.id === local.id));
+      if (!existsInDb && ticket) {
+        try {
+          await saveOfflineRegistrationRecord(local);
+          pushedCount++;
+        } catch (ePush) {
+          console.warn('[Offline Sync Push Note]:', ePush.message);
+        }
+      }
+    }
+
+    // 3. Re-query Supabase to get the complete current state
+    const { data: finalDb } = await supabase
+      .from('offline_registrations')
+      .select(`*, ${REGISTRATION_EVENT_FIELDS}, offline_registration_members(*)`)
+      .order('created_at', { ascending: false });
+
+    const finalRecords = Array.isArray(finalDb) ? finalDb : dbRecords;
+    writeOfflineRegistrations(finalRecords);
+
+    return res.json({
+      success: true,
+      message: `Synchronized ${finalRecords.length} offline registration(s) with Supabase (offline_registrations & offline_registration_members).`,
+      count: finalRecords.length,
+      pushedCount,
+      data: finalRecords
+    });
+  } catch (err) {
+    console.error('syncOfflineRegistrationsWithSupabase error:', err);
+    return res.status(500).json({ success: false, message: 'Sync failed: ' + err.message });
+  }
+};
+
+exports.updateOfflineRegistration = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatePayload = {
+      ...req.body,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+      if (isUUID) {
+        await supabase.from('offline_registrations').update(updatePayload).eq('id', id);
+      } else {
+        await supabase.from('offline_registrations').update(updatePayload).ilike('ticket_code', id);
+      }
+    } catch (e) {}
+
+    const local = readOfflineRegistrations();
+    const idx = local.findIndex(r => r.id === id || r.ticket_code === id || r.ticketCode === id);
+    if (idx !== -1) {
+      local[idx] = { ...local[idx], ...updatePayload };
+      writeOfflineRegistrations(local);
+    }
+
+    return res.json({ success: true, message: 'Offline registration updated successfully', data: updatePayload });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to update offline registration' });
+  }
+};
+
+exports.deleteOfflineRegistration = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const normId = String(id).trim();
+
+    try {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normId);
+      if (isUUID) {
+        await supabase.from('offline_registrations').delete().eq('id', normId);
+        await supabase.from('offline_registration_members').delete().eq('registration_id', normId);
+        try { await supabase.from('offline_registrations_member').delete().eq('registration_id', normId); } catch (e) {}
+      } else {
+        await supabase.from('offline_registrations').delete().ilike('ticket_code', normId);
+        await supabase.from('offline_registration_members').delete().ilike('ticket_code', normId);
+        try { await supabase.from('offline_registrations_member').delete().ilike('ticket_code', normId); } catch (e) {}
+      }
+    } catch (e) {}
+
+    let local = readOfflineRegistrations();
+    local = local.filter(r => r.id !== normId && r.ticket_code !== normId && r.ticketCode !== normId);
+    writeOfflineRegistrations(local);
+
+    return res.json({ success: true, message: 'Offline registration record removed successfully' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to delete offline registration' });
+  }
+};
+
+exports.readOfflineRegistrations = readOfflineRegistrations;
+exports.writeOfflineRegistrations = writeOfflineRegistrations;
 exports.enrichRegistrationRecord = enrichRegistrationRecord;
+exports.insertOfflineMembersHelper = insertOfflineMembersHelper;
+exports.saveOfflineRegistrationRecord = saveOfflineRegistrationRecord;
+

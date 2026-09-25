@@ -705,6 +705,41 @@ exports.getDashboardData = async (req, res) => {
         });
       }
 
+      // Query Separate Table: offline_registrations
+      let rawOfflineData = [];
+      try {
+        const { data: offData } = await supabase
+          .from('offline_registrations')
+          .select('*, offline_registration_members(*)')
+          .order('created_at', { ascending: false });
+        if (offData && Array.isArray(offData) && offData.length > 0) {
+          rawOfflineData = offData;
+        } else {
+          const offFile = path.join(__dirname, '../data/offline_registrations.json');
+          if (fs.existsSync(offFile)) {
+            rawOfflineData = JSON.parse(fs.readFileSync(offFile, 'utf-8') || '[]');
+          }
+        }
+      } catch (_) {
+        const offFile = path.join(__dirname, '../data/offline_registrations.json');
+        if (fs.existsSync(offFile)) {
+          rawOfflineData = JSON.parse(fs.readFileSync(offFile, 'utf-8') || '[]');
+        }
+      }
+
+      if (rawOfflineData && Array.isArray(rawOfflineData) && rawOfflineData.length > 0) {
+        const parsedOffline = rawOfflineData.map(r => {
+          const copy = { ...r };
+          copy.payment_method = 'ON_SITE_DESK';
+          copy.paymentMethod = 'ON_SITE_DESK';
+          copy.payment_status = copy.payment_status || 'PAID';
+          copy.paymentStatus = copy.paymentStatus || 'PAID';
+          copy.is_verified = copy.is_verified !== false;
+          return copy;
+        });
+        registrations = [...registrations, ...parsedOffline];
+      }
+
       if (spRes.data && spRes.data.length > 0) sponsors = spRes.data.map(dbToSponsor);
       if (coRes.data && coRes.data.length > 0) coordinators = coRes.data.map(dbToCoordinator);
       if (evRes.data && evRes.data.length > 0) events = evRes.data.map(dbToEvent);
@@ -3512,6 +3547,12 @@ function parsePassPdfText(rawText) {
 
 // ── HELPER: SAVE SINGLE REGISTRATION TO SUPABASE ─────────────────────────
 async function saveSingleRegistrationToDb(reg) {
+  const isOffline = String(reg.paymentMethod || reg.payment_method || '').toUpperCase() === 'ON_SITE_DESK' || reg.isOffline === true || reg.is_offline === true;
+  if (isOffline) {
+    const { saveOfflineRegistrationRecord } = require('./apiController');
+    return await saveOfflineRegistrationRecord(reg);
+  }
+
   const normTicket = (reg.ticketCode || reg.ticket_code || '').trim();
   const normUtr = (reg.upiUtr || reg.upi_utr || reg.razorpayPaymentId || reg.razorpay_payment_id || '').trim();
   const leadFullName = (reg.fullName || reg.full_name || 'Participant').trim();

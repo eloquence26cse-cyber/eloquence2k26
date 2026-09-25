@@ -246,16 +246,95 @@
         "time": "40 Mins"
       }
     ],
-    "guidelines": [
-      "Bring fully charged mobile devices and personal headphones."
-    ],
+    "guidelines": {
+      "esports_config": {
+        "_b_g_m_i": {
+          "fee": "₹200 per squad",
+          "badge": "Smartphone / iPad • 4-Player Squad",
+          "rules": [
+            "Strictly 4 players per squad (smartphones & iPads permitted; emulators, PCs, and triggers are prohibited).",
+            "Matches are hosted on official BGMI Custom Tournament Rooms in TPP Squad mode.",
+            "Official competition maps: Erangel (Qualifiers) and Miramar (Grand Finals).",
+            "Any form of cheating, wallhacks, aimbots, GFX configs, or iPad-view mods on mobile will result in an instant permanent ban.",
+            "Teams must enter the custom room within the allotted time using their registered In-Game Character IDs.",
+            "Scoring follows the official BGIS points matrix (10 pts for #1 + 1 pt per finish).",
+            "Players must bring fully charged devices, chargers, and personal wired/wireless earphones."
+          ],
+          "title": "BGMI",
+          "venue": "IT DRAWING HALL",
+          "rounds": [
+            {
+              "desc": "Squads drop across Erangel. Survival placement and finish points rank the leaderboard.",
+              "name": "Match 1: Erangel Battle Drop",
+              "time": "35 Mins"
+            },
+            {
+              "desc": "Top qualified squads duel in the dunes of Miramar to crown the ELOQUENCE ’26 E-Sports Champion!",
+              "name": "Match 2: Miramar Desert Showdown",
+              "time": "40 Mins"
+            }
+          ],
+          "timing": "10:40 AM TO 12:40 PM",
+          "is_team": true,
+          "tagline": "Battlegrounds Mobile India Squad Championship",
+          "fee_type": "per_squad",
+          "subtitle": "BGMI Custom Room Tournament",
+          "team_size": "Only Squad Match (4 Players)",
+          "highlights": [
+            "TPP Squad Mode",
+            "Erangel & Miramar",
+            "Flat ₹200 / Squad"
+          ],
+          "description": "Premier squad tactical tournament on classic custom tournament rooms. Coordinate tactical rotations, zone dominance, and precise team assaults across Erangel and Miramar to claim the Winner Winner Chicken Dinner!"
+        },
+        "_f_r_e_e _f_i_r_e": {
+          "fee": "₹200 per squad",
+          "badge": "Mobile Only • 4-Player Squad",
+          "rules": [
+            "Strictly 4 players per squad (mobile phones only, no iPads, tablets, or emulators).",
+            "Official Free Fire custom room matches played on Bermuda and Purgatory maps.",
+            "Gun Property / Attributes will be turned OFF for fair competitive esports play.",
+            "Hacks, scripts, triggers, or third-party boosters will result in immediate squad ban.",
+            "All players must join the room using their registered In-Game Name (IGN) and UID on time.",
+            "Scoring is calculated strictly using the official Free Fire Esports Points System (Placement + Kills).",
+            "Participants must bring their own charged mobile devices, earphones, and active internet connection."
+          ],
+          "title": "Free Fire",
+          "venue": "CSE DRAWING HALL",
+          "rounds": [
+            {
+              "desc": "All squads drop into Bermuda. Placements and kill points determine the top advancing teams.",
+              "name": "Match 1: Bermuda Qualifying Drop",
+              "time": "35 Mins"
+            },
+            {
+              "desc": "Top seeded surviving squads battle on Purgatory for the ultimate championship trophy and cash prize.",
+              "name": "Match 2: Purgatory Grand Finals",
+              "time": "40 Mins"
+            }
+          ],
+          "timing": "10:40 AM TO 12:40 PM",
+          "is_team": true,
+          "tagline": "Mobile Battle Royale Clash",
+          "fee_type": "per_squad",
+          "subtitle": "Free Fire Custom Room Tournament",
+          "team_size": "Only Squad Match (4 Players)",
+          "highlights": [
+            "Gun Attributes OFF",
+            "Bermuda & Purgatory",
+            "Flat ₹200 / Squad"
+          ],
+          "description": "High-octane mobile battle royale showdown on custom symposium rooms. Drop into Bermuda and Purgatory with your 4-player squad, out-survive opponents with superior tactics, gunplay, and teamwork to seize the Booyah!"
+        }
+      }
+    },
     "highlights": [
       "Emotes strictly restricted",
       "4-Player squad match only",
       "Flat ₹200 per squad"
     ],
     "created_at": "2026-09-16T10:16:14.505182+00:00",
-    "updated_at": "2026-09-18T09:11:45.875+00:00",
+    "updated_at": "2026-09-25T09:38:33.679+00:00",
     "venue_image": ""
   },
   {
@@ -433,20 +512,29 @@
     "is_team": true,
     "tag": "Competitive Coding",
     "venue": "Lab 1 & 2",
-    "timing": "10:40 AM TO 12:40 PM",
+    "timing": "11:00 AM TO 1:00 PM",
     "description": "Test your logic and debugging prowess across intense algorithmic challenges and bug fixes.",
     "image": "/events/event-1789617913099-6240.png",
     "rules": [
-      "Round 1 is a written test on code analysis and technical questions.",
-      "Inbuilt library should not be used. No gadgets are allowed.",
-      "Top 15 scorers advance to the final debugging round on a provided system.",
-      "Allowed languages for the final round are C, Java, and Python.",
-      "Participation can be individual or in a team of up to 2 members; any form of malpractice leads to disqualification.",
-      "Finalists are ranked by problems solved and time taken."
+      "Round 1 is a quiz covering programming and technical questions; it will be conducted online or offline in case of technical issues.",
+      "C, Java, and Python will be the programming languages covered in the event.",
+      "50% of the participants will qualify for Round 2 based on their performance in Round 1.",
+      "Round 2 consists of 3 coding and 2 debugging questions, with 5 marks awarded for each question.",
+      "Built-in functions are not allowed, and no gadgets or unauthorized assistance are permitted; any violation will result in disqualification.",
+      "Solving coding questions will be given priority over debugging questions when determining the final evaluation.",
+      "Winners will be determined based on the marks obtained and the time taken to complete each question."
     ],
     "rounds": [
-      "Round 1: Written Logic Test: MCQs covering syntax, complexity, and output prediction.",
-      "Round 2: Live Bug Hunting & Coding: Fix broken code snippets and solve competitive problems."
+      {
+        "desc": "Written Logic Test: MCQs covering syntax, complexity, and output prediction.",
+        "name": "Round 1",
+        "time": "30 Mins"
+      },
+      {
+        "desc": "Live Bug Hunting & Coding: Fix broken code snippets and solve competitive problems.",
+        "name": "Round 2",
+        "time": "60 Mins"
+      }
     ],
     "guidelines": [
       "Desktop PCs will be provided with offline compilers.",
@@ -458,7 +546,7 @@
       "Round 2: Coding & Debugging"
     ],
     "created_at": "2026-09-16T10:16:13.781394+00:00",
-    "updated_at": "2026-09-20T14:54:15.16+00:00",
+    "updated_at": "2026-09-25T06:56:36.003+00:00",
     "venue_image": ""
   },
   {
@@ -476,30 +564,32 @@
     "fee_type": "per_head",
     "is_team": true,
     "tag": "Knowledge Battle",
-    "venue": "CSE DEPT 3RD Year Class A",
+    "venue": "MBA SEMINAR HALL",
     "timing": "10:40 AM TO 12:40 PM",
     "description": "Rapid-fire online technology trivia covering computer fundamentals, latest trends, AI, and IT giants.",
     "image": "/events/event-1789617928386-8030.png",
     "rules": [
-      "Screen sharing or cheating must be strictly restricted.",
-      "Questions will cover core CSE/IT domains like programming, networks, databases, and AI.",
-      "Hints from the audience are not allowed and may lead to a team's disqualification.",
-      "The quiz will consist of multiple formats, including buzzer and rapid-fire rounds."
+      "Participants can participate individually only",
+      "Round 1 will have 50 seconds per question, while Round 2 will have 30 seconds per question.",
+      "The quiz may be conducted online or through paper and pen. For online rounds, participants must ensure a stable internet connection.",
+      "The competition will consist of 2 or 3 rounds, depending on the number of participants and available time.",
+      "All questions will be based on CSE/IT-related domains, including Programming, Networking, Databases, and other technology-related areas.",
+      "Any communication, gestures, signals, or actions with other participants will be considered malpractice and may lead to disqualification.",
+      "Only one mobile phone is allowed per participant.",
+      "Participants selected in Round 1 will proceed to Round 2.",
+      "During online rounds, switching to another website, tab, or application may result in immediate disqualification or removal from the quiz.",
+      "In case of a tie, a tie-breaker will be conducted.",
+      "The decision of the organizers will be final and binding."
     ],
     "rounds": [
       {
-        "desc": "30 fast-paced technical questions.",
-        "name": "Round 1: Rapid Fire MCQs",
+        "desc": "MCQ + Guess the Technology + Bug Hunter questions",
+        "name": "ROUND 1 — TECH FUSION",
         "time": "15 Mins"
       },
       {
-        "desc": "Audio-visual and logo identification.",
-        "name": "Round 2: Identify the Tech & Buzz",
-        "time": "15 Mins"
-      },
-      {
-        "desc": "Buzzer-based tie-breaker and high-difficulty trivia.",
-        "name": "Round 3: Grand Finale Showdown",
+        "desc": "Identify technologies and tackle advanced technical challenges with speed and accuracy.",
+        "name": "Round 2: Logo + Advanced Technical Questions",
         "time": "15 Mins"
       }
     ],
@@ -512,7 +602,7 @@
       "Total 45 mins"
     ],
     "created_at": "2026-09-16T10:16:13.863678+00:00",
-    "updated_at": "2026-09-19T11:10:22.639+00:00",
+    "updated_at": "2026-09-25T07:08:12.893+00:00",
     "venue_image": ""
   },
   {
