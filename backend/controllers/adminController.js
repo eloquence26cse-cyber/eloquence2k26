@@ -259,6 +259,8 @@ const dbToEvent = (e) => {
     rounds: e.rounds,
     guidelines: e.guidelines,
     highlights: e.highlights,
+    esportsConfig: e.esports_config || e.esportsConfig || (e.guidelines && typeof e.guidelines === 'object' && !Array.isArray(e.guidelines) ? (e.guidelines.esports_config || e.guidelines.esportsConfig) : null) || null,
+    esports_config: e.esports_config || e.esportsConfig || (e.guidelines && typeof e.guidelines === 'object' && !Array.isArray(e.guidelines) ? (e.guidelines.esports_config || e.guidelines.esportsConfig) : null) || null,
     createdAt: e.created_at || e.createdAt,
     updatedAt: e.updated_at || e.updatedAt
   };
@@ -1475,7 +1477,9 @@ exports.getEvents = async (req, res) => {
         const local = localEvents.find(l => l.id === e.id);
         return {
           ...e,
-          venueImage: e.venueImage || (local ? (local.venueImage || local.venue_image) : '') || ''
+          venueImage: e.venueImage || (local ? (local.venueImage || local.venue_image) : '') || '',
+          esportsConfig: e.esportsConfig || (local ? (local.esportsConfig || local.esports_config || (local.guidelines && local.guidelines.esports_config)) : null) || null,
+          esports_config: e.esports_config || (local ? (local.esports_config || local.esportsConfig || (local.guidelines && local.guidelines.esports_config)) : null) || null
         };
       });
       return res.json({ success: true, data: merged });
@@ -1658,8 +1662,12 @@ exports.updateEvent = async (req, res) => {
     rules,
     rounds,
     guidelines,
-    highlights
+    highlights,
+    esportsConfig,
+    esports_config
   } = req.body;
+
+  const incomingEsportsConfig = esportsConfig !== undefined ? esportsConfig : esports_config;
 
   const events = getEventsData();
   const eventIndex = events.findIndex(e => e.id === id);
@@ -1703,19 +1711,42 @@ exports.updateEvent = async (req, res) => {
   if (cleanImage !== undefined) updateFields.image = cleanImage ? cleanImage.trim() : '';
   if (rules !== undefined && Array.isArray(rules)) updateFields.rules = rules;
   if (rounds !== undefined && Array.isArray(rounds)) updateFields.rounds = rounds;
-  if (guidelines !== undefined && Array.isArray(guidelines)) updateFields.guidelines = guidelines;
+  if (guidelines !== undefined) updateFields.guidelines = guidelines;
   if (highlights !== undefined && Array.isArray(highlights)) updateFields.highlights = highlights;
+
+  if (incomingEsportsConfig !== undefined) {
+    let guidelinesObj = {};
+    if (updateFields.guidelines && typeof updateFields.guidelines === 'object' && !Array.isArray(updateFields.guidelines)) {
+      guidelinesObj = { ...updateFields.guidelines };
+    } else if (events[eventIndex]?.guidelines && typeof events[eventIndex]?.guidelines === 'object' && !Array.isArray(events[eventIndex]?.guidelines)) {
+      guidelinesObj = { ...events[eventIndex].guidelines };
+    }
+    guidelinesObj.esports_config = incomingEsportsConfig;
+    updateFields.guidelines = guidelinesObj;
+    updateFields.esports_config = incomingEsportsConfig;
+  }
 
   try {
     const { data: existingDbEvent } = await supabase.from('events').select('*').eq('id', id).single();
+    if (incomingEsportsConfig !== undefined && (!updateFields.guidelines || Array.isArray(updateFields.guidelines))) {
+      let gObj = {};
+      if (existingDbEvent && existingDbEvent.guidelines && typeof existingDbEvent.guidelines === 'object' && !Array.isArray(existingDbEvent.guidelines)) {
+        gObj = { ...existingDbEvent.guidelines };
+      }
+      gObj.esports_config = incomingEsportsConfig;
+      updateFields.guidelines = gObj;
+    }
     const dbPayload = {
       id,
       number: (existingDbEvent && existingDbEvent.number) ? existingDbEvent.number : (events[eventIndex]?.number || '01'),
       ...(existingDbEvent || {}),
       ...updateFields
     };
+    // Ensure clean serialization
+    delete dbPayload.esportsConfig;
     let { error: dbErr } = await supabase.from('events').upsert(dbPayload);
-    if (dbErr && dbErr.code === 'PGRST204') {
+    if (dbErr && (dbErr.code === 'PGRST204' || dbErr.message?.includes('esports_config'))) {
+      delete dbPayload.esports_config;
       delete dbPayload.venue_image;
       const retryRes = await supabase.from('events').upsert(dbPayload);
       dbErr = retryRes.error;
@@ -1752,6 +1783,14 @@ exports.updateEvent = async (req, res) => {
     if (rounds !== undefined && Array.isArray(rounds)) events[eventIndex].rounds = rounds;
     if (guidelines !== undefined && Array.isArray(guidelines)) events[eventIndex].guidelines = guidelines;
     if (highlights !== undefined && Array.isArray(highlights)) events[eventIndex].highlights = highlights;
+    if (incomingEsportsConfig !== undefined) {
+      events[eventIndex].esportsConfig = incomingEsportsConfig;
+      events[eventIndex].esports_config = incomingEsportsConfig;
+      if (!events[eventIndex].guidelines || typeof events[eventIndex].guidelines !== 'object' || Array.isArray(events[eventIndex].guidelines)) {
+        events[eventIndex].guidelines = {};
+      }
+      events[eventIndex].guidelines.esports_config = incomingEsportsConfig;
+    }
     saveEventsData(events);
   } else {
     // If not in events.json, append it
@@ -2549,19 +2588,52 @@ exports.updateRegistration = async (req, res) => {
     if (totalFee !== undefined || totalAmount !== undefined || total_fee !== undefined) {
       updatePayload.total_fee = Number(totalFee ?? totalAmount ?? total_fee ?? 0);
     }
-    if (game !== undefined) {
-      updatePayload.game = game ? String(game).trim().toUpperCase() : null;
-      try {
-        let vSnap = {};
-        if (existingReg?.venue_snapshot && typeof existingReg.venue_snapshot === 'string' && existingReg.venue_snapshot.startsWith('{')) {
-          vSnap = JSON.parse(existingReg.venue_snapshot);
-        }
-        vSnap.game = updatePayload.game;
-        updatePayload.venue_snapshot = JSON.stringify(vSnap);
-      } catch (_) {}
+
+    // Determine members list
+    const incomingMembers = teamMembers || team_members;
+    if (Array.isArray(incomingMembers)) {
+      updatePayload.members_count = incomingMembers.length + 1; // leader + members
+    } else if (membersCount !== undefined || members_count !== undefined) {
+      updatePayload.members_count = Number(membersCount || members_count || 1);
     }
+
+    // Safely update venue_snapshot with game and team metadata without injecting invalid column into table
+    let vSnap = {};
+    try {
+      if (existingReg?.venue_snapshot && typeof existingReg.venue_snapshot === 'string' && existingReg.venue_snapshot.trim().startsWith('{')) {
+        vSnap = JSON.parse(existingReg.venue_snapshot);
+      }
+    } catch (_) {}
+
+    if (game !== undefined) {
+      vSnap.game = game ? String(game).trim().toUpperCase() : null;
+    }
+    if (Array.isArray(incomingMembers)) {
+      vSnap.team_members = incomingMembers;
+    }
+    if (Object.keys(vSnap).length > 0) {
+      updatePayload.venue_snapshot = JSON.stringify(vSnap);
+    }
+
     if (paymentStatus !== undefined || payment_status !== undefined) {
-      updatePayload.payment_status = String(paymentStatus || payment_status || 'PENDING').toUpperCase();
+      const cleanPayStatus = String(paymentStatus || payment_status || 'PENDING').toUpperCase();
+      updatePayload.payment_status = cleanPayStatus;
+      if (cleanPayStatus === 'VERIFIED') {
+        updatePayload.is_verified = true;
+        updatePayload.verification_status = 'verified';
+        updatePayload.verified_at = updatePayload.verified_at || new Date().toISOString();
+        updatePayload.verified_by = updatePayload.verified_by || (req.user?.username || 'Admin');
+        updatePayload.is_flagged = false;
+      } else if (cleanPayStatus === 'REJECTED') {
+        updatePayload.is_verified = false;
+        updatePayload.verification_status = 'flagged';
+        updatePayload.is_flagged = true;
+        updatePayload.flag_reason = flagReason || flag_reason || existingReg?.flag_reason || 'Flagged/Rejected by admin';
+      } else {
+        updatePayload.is_verified = false;
+        updatePayload.verification_status = 'pending';
+        updatePayload.is_flagged = false;
+      }
     }
     if (paymentMethod !== undefined || payment_method !== undefined) {
       updatePayload.payment_method = String(paymentMethod || payment_method || 'ONLINE').toUpperCase();
@@ -2579,6 +2651,7 @@ exports.updateRegistration = async (req, res) => {
         updatePayload.verified_at = updatePayload.verified_at || new Date().toISOString();
         updatePayload.verified_by = updatePayload.verified_by || (req.user?.username || 'Admin');
         updatePayload.verification_status = 'verified';
+        updatePayload.is_flagged = false;
       }
     }
     if (flagReason !== undefined || flag_reason !== undefined) {
@@ -2588,24 +2661,31 @@ exports.updateRegistration = async (req, res) => {
     const cleanUtr = String(upiUtr || upi_utr || transactionId || transaction_id || '').trim();
     if (cleanUtr) {
       updatePayload.upi_utr = cleanUtr;
-    }
-
-    // Determine members list
-    const incomingMembers = teamMembers || team_members;
-    if (Array.isArray(incomingMembers)) {
-      updatePayload.members_count = incomingMembers.length + 1; // leader + members
-    } else if (membersCount !== undefined || members_count !== undefined) {
-      updatePayload.members_count = Number(membersCount || members_count || 1);
+      updatePayload.razorpay_payment_id = cleanUtr;
     }
 
     // 3. Update Supabase registrations table
-    const updateQuery = isUUID
+    let updateQuery = isUUID
       ? supabase.from('registrations').update(updatePayload).eq('id', regId)
       : supabase.from('registrations').update(updatePayload).ilike('ticket_code', ticketCode);
 
-    const { data: updatedDbData, error: updateErr } = await updateQuery.select('*, registration_members(*)');
+    let { data: updatedDbData, error: updateErr } = await updateQuery.select('*, registration_members(*)');
     if (updateErr) {
       console.warn('Supabase updateRegistration error:', updateErr.message);
+      // Auto-strip unknown column and retry if Supabase complains about schema cache
+      if (updateErr.message && updateErr.message.includes('Could not find the') && updateErr.message.includes('column')) {
+        const match = updateErr.message.match(/Could not find the '([^']+)' column/);
+        if (match && match[1]) {
+          const badCol = match[1];
+          delete updatePayload[badCol];
+          const retryQuery = isUUID
+            ? supabase.from('registrations').update(updatePayload).eq('id', regId)
+            : supabase.from('registrations').update(updatePayload).ilike('ticket_code', ticketCode);
+          const retryRes = await retryQuery.select('*, registration_members(*)');
+          updatedDbData = retryRes.data;
+          updateErr = retryRes.error;
+        }
+      }
     }
 
     // 4. Update team members in registration_members table if provided

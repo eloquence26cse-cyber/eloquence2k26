@@ -306,8 +306,15 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
   }, [event?.id]);
 
   const isEsports = event && (event.id === 'nontech-05' || event.name?.toLowerCase().includes('gaming') || event.name?.toLowerCase().includes('battle of champions'));
-  const activeEsportsData = (isEsports && selectedEsportsGame && ESPORTS_GAMES_DATA[selectedEsportsGame])
+  const dynamicEsportsConfig = event?.esportsConfig || event?.esports_config || (event?.guidelines && typeof event.guidelines === 'object' && !Array.isArray(event.guidelines) ? (event.guidelines.esports_config || event.guidelines.esportsConfig) : null) || null;
+  const gameConfig = (dynamicEsportsConfig && selectedEsportsGame)
+    ? (dynamicEsportsConfig[selectedEsportsGame] || dynamicEsportsConfig[selectedEsportsGame.toUpperCase()] || dynamicEsportsConfig[selectedEsportsGame.toLowerCase()])
+    : null;
+  const fallbackConfig = (isEsports && selectedEsportsGame && ESPORTS_GAMES_DATA[selectedEsportsGame])
     ? ESPORTS_GAMES_DATA[selectedEsportsGame]
+    : null;
+  const activeEsportsData = (gameConfig || fallbackConfig)
+    ? { ...(fallbackConfig || {}), ...(gameConfig || {}) }
     : null;
 
   const normEventId = normalizeEventId(eventId || event?.id || '');
