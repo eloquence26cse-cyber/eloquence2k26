@@ -85,11 +85,13 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
   const [partSearch, setPartSearch] = useState('');
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
 
-  // Send Modal States
+  // Send Modal States & Esports Track Handlers
   const [isSendModalOpen, setIsSendModalOpen] = useState(false);
   const [sendTargetEvent, setSendTargetEvent] = useState(null);
   const [selectedCoordName, setSelectedCoordName] = useState('');
   const [isSendingList, setIsSendingList] = useState(false);
+  const [sendGameScope, setSendGameScope] = useState('ALL'); // 'ALL' | 'FREE FIRE' | 'BGMI'
+  const [bocGameFilter, setBocGameFilter] = useState('all'); // 'all' | 'FREE FIRE' | 'BGMI'
 
   // On-Site Registration Form State (Full Online-Matching Form Structure)
   const [onSiteEventId, setOnSiteEventId] = useState('');
@@ -158,28 +160,146 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
       .catch(err => console.warn('Error fetching coordinators list:', err));
   };
 
+  // Esports identification & normalization helpers
+  const isEsportsEvent = (evt) => {
+    if (!evt) return false;
+    const id = String(evt.id || evt.eventId || '').toLowerCase();
+    const name = String(evt.name || evt.eventName || '').toLowerCase();
+    return id === 'nontech-05' || name.includes('battle of champion') || name.includes('battle of the champion');
+  };
+
+  const getRegEsportsGame = (r) => {
+    if (!r) return 'FREE FIRE';
+    if (r.game && typeof r.game === 'string' && r.game.trim()) return r.game.trim().toUpperCase();
+    if (r.venue_snapshot?.game && typeof r.venue_snapshot.game === 'string' && r.venue_snapshot.game.trim()) {
+      return r.venue_snapshot.game.trim().toUpperCase();
+    }
+    const tn = String(r.team_name || r.teamName || '').toUpperCase();
+    const notes = String(r.notes || '').toUpperCase();
+    if (tn.includes('BGMI') || notes.includes('BGMI')) return 'BGMI';
+    if (tn.includes('FREE FIRE') || tn.includes('FREEFIRE') || notes.includes('FREE FIRE')) return 'FREE FIRE';
+    return 'FREE FIRE';
+  };
+
+  const formatTournamentRosterText = (evt, gameScope = 'ALL') => {
+    if (!evt) return '';
+    const isEsports = isEsportsEvent(evt);
+    let regs = registrationsList.filter(r => (r.event_id || r.eventId) === evt.id);
+    if (isEsports && gameScope && gameScope !== 'ALL' && gameScope !== 'all') {
+      regs = regs.filter(r => getRegEsportsGame(r) === gameScope.toUpperCase());
+    }
+
+    const titleScope = isEsports && gameScope && gameScope !== 'ALL' && gameScope !== 'all' ? ` [${gameScope.toUpperCase()} DIVISION]` : '';
+    let text = `🏆 *ELOQUENCE 2026 — OFFICIAL TOURNAMENT ROSTER*\n`;
+    text += `🎯 *EVENT:* ${evt.name}${titleScope}\n`;
+    text += `📍 *VENUE:* ${evt.venue || 'CSE Dept Lab'}\n`;
+    text += `👥 *TOTAL SQUADS / ENTRIES:* ${regs.length}\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    if (regs.length === 0) {
+      text += `No registrations recorded yet.\n`;
+      return text;
+    }
+
+    regs.forEach((r, idx) => {
+      const gameBadge = isEsports ? ` [${getRegEsportsGame(r)}]` : '';
+      const teamName = r.team_name || r.teamName ? ` "${r.team_name || r.teamName}"` : '';
+      const lead = r.full_name || r.fullName || 'Lead Player';
+      const phone = r.phone || '-';
+      const ticket = r.ticket_code || r.registrationId || r.id || '-';
+      const college = r.college || 'CAHCET';
+      const members = getTeamMembers(r);
+
+      text += `*#${idx + 1}${teamName}${gameBadge}*\n`;
+      text += `🎫 Ticket: ${ticket}\n`;
+      text += `👑 Captain: ${lead} (📞 ${phone})\n`;
+      text += `🏫 College: ${college}\n`;
+      if (members.length > 0) {
+        text += `👥 Squad (${members.length + 1} players):\n`;
+        text += `   1. ${lead} (Captain)\n`;
+        members.forEach((m, mIdx) => {
+          text += `   ${mIdx + 2}. ${m}\n`;
+        });
+      }
+      text += `\n`;
+    });
+
+    text += `━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `⚡ Eloquence 2026 Tournament Management`;
+    return text;
+  };
+
+  const handleCopyRosterToClipboard = (evt, gameScope = 'ALL') => {
+    const text = formatTournamentRosterText(evt, gameScope);
+    if (!text) return toast.error('No roster data to copy');
+    navigator.clipboard.writeText(text)
+      .then(() => toast.success(`Tournament roster for ${evt.name} copied to clipboard!`))
+      .catch(() => toast.error('Failed to copy to clipboard'));
+  };
+
+  const handleShareRosterWhatsApp = (evt, gameScope = 'ALL', targetPhone = '') => {
+    const text = formatTournamentRosterText(evt, gameScope);
+    if (!text) return toast.error('No roster data to share');
+    const encoded = encodeURIComponent(text);
+    const cleanPhone = (targetPhone || '').replace(/\D/g, '');
+    const url = cleanPhone ? `https://wa.me/91${cleanPhone}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
+    window.open(url, '_blank');
+  };
+
+  const handleShareSquadWhatsApp = (reg, evt) => {
+    const phone = (reg?.phone || '').replace(/\D/g, '');
+    const isEsports = isEsportsEvent(evt);
+    const game = isEsports ? getRegEsportsGame(reg) : '';
+    const teamName = reg?.team_name || reg?.teamName || 'Your Team';
+    const members = getTeamMembers(reg);
+    let msg = `Hello ${reg?.full_name || 'Participant'}! 👋\n`;
+    msg += `This is an official update from *Eloquence 2026 - ${evt?.name || 'Symposium'}*.\n\n`;
+    msg += `🎫 *Ticket:* ${reg?.ticket_code || reg?.registrationId || reg?.id}\n`;
+    if (isEsports) msg += `🎮 *Game Track:* ${game}\n`;
+    msg += `🛡️ *Team / Entry:* ${teamName}\n`;
+    if (members.length > 0) {
+      msg += `👥 *Squad Members:*\n1. ${reg?.full_name || 'Lead'} (Captain)\n${members.map((m, i) => `${i + 2}. ${m}`).join('\n')}\n`;
+    }
+    msg += `📍 *Venue:* ${evt?.venue || 'CSE Lab'}\n\n`;
+    msg += `Please report to the registration desk on time. Best wishes! 🚀`;
+
+    const url = phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+  };
+
   // PDF Export Sheet Handler
-  const handleExportPDF = (targetEvt) => {
-    const evtRegs = registrationsList.filter(r => (r.event_id || r.eventId) === targetEvt.id);
+  const handleExportPDF = (targetEvt, filterGame = 'ALL') => {
+    const isEsports = isEsportsEvent(targetEvt);
+    let evtRegs = registrationsList.filter(r => (r.event_id || r.eventId) === targetEvt.id);
+    if (isEsports && filterGame && filterGame !== 'ALL' && filterGame !== 'all') {
+      evtRegs = evtRegs.filter(r => getRegEsportsGame(r) === filterGame.toUpperCase());
+    }
+
     const win = window.open('', '_blank');
     if (!win) return toast.error('Please allow popups to export PDF');
+
+    const subTitle = isEsports && filterGame && filterGame !== 'ALL' && filterGame !== 'all' ? ` — ${filterGame.toUpperCase()} DIVISION` : '';
+    const ffCount = evtRegs.filter(r => getRegEsportsGame(r) === 'FREE FIRE').length;
+    const bgmiCount = evtRegs.filter(r => getRegEsportsGame(r) === 'BGMI').length;
 
     const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>${targetEvt.name} - Official Participant Sheet</title>
+        <title>${targetEvt.name}${subTitle} - Official Participant Sheet</title>
         <style>
           body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 25px; color: #1e293b; line-height: 1.5; }
           .header { text-align: center; margin-bottom: 25px; border-bottom: 3px solid #2563eb; padding-bottom: 12px; }
           .header h1 { margin: 0; color: #1e3a8a; font-size: 24px; text-transform: uppercase; letter-spacing: 0.5px; }
           .header p { margin: 6px 0 0 0; color: #64748b; font-size: 14px; font-weight: 600; }
-          .info-bar { display: flex; justify-content: space-between; background: #f8fafc; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0; font-size: 13px; font-weight: 600; }
+          .info-bar { display: flex; justify-content: space-between; background: #f8fafc; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0; font-size: 13px; font-weight: 600; flex-wrap: wrap; gap: 8px; }
           table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
           th, td { border: 1px solid #cbd5e1; padding: 9px 12px; text-align: left; vertical-align: top; }
           th { background: #1e293b; color: #ffffff; text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
           tr:nth-child(even) { background: #f8fafc; }
           .badge { display: inline-block; background: #059669; color: #ffffff; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+          .badge-ff { display: inline-block; background: #ea580c; color: #ffffff; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+          .badge-bgmi { display: inline-block; background: #0891b2; color: #ffffff; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: bold; }
           .members-box { background: #f1f5f9; padding: 6px 8px; border-radius: 6px; font-size: 11px; margin-top: 3px; }
           .footer { margin-top: 40px; display: flex; justify-content: space-between; font-size: 12px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 15px; }
         </style>
@@ -191,7 +311,8 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
         </div>
 
         <div class="info-bar">
-          <div><strong>EVENT:</strong> ${targetEvt.name} (${targetEvt.category.toUpperCase()})</div>
+          <div><strong>EVENT:</strong> ${targetEvt.name}${subTitle} (${targetEvt.category.toUpperCase()})</div>
+          ${isEsports && (!filterGame || filterGame === 'ALL' || filterGame === 'all') ? `<div><strong>TRACKS:</strong> 🔥 Free Fire: ${ffCount} | 🎯 BGMI: ${bgmiCount}</div>` : ''}
           <div><strong>TOTAL REGISTRATIONS:</strong> ${evtRegs.length}</div>
           <div><strong>DATE:</strong> ${new Date().toLocaleDateString()}</div>
         </div>
@@ -200,32 +321,36 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
           <thead>
             <tr>
               <th style="width: 30px;">#</th>
-              <th style="width: 100px;">Ticket Code</th>
+              <th style="width: 90px;">Ticket Code</th>
+              ${isEsports ? '<th style="width: 85px;">Esports Game</th>' : ''}
               <th style="width: 110px;">Team Name</th>
-              <th>Lead Participant</th>
+              <th>Lead Participant / Captain</th>
               <th>Phone & Email</th>
-              <th>Team Members</th>
+              <th>Squad Members</th>
               <th>College & Dept</th>
             </tr>
           </thead>
           <tbody>
             ${evtRegs.map((r, i) => {
               const members = getTeamMembers(r);
+              const game = getRegEsportsGame(r);
+              const gameBadge = game === 'BGMI' ? '<span class="badge-bgmi">🎯 BGMI</span>' : '<span class="badge-ff">🔥 FREE FIRE</span>';
               return `
                 <tr>
                   <td>${i + 1}</td>
                   <td><strong>${r.ticket_code || r.registrationId || r.id || '-'}</strong></td>
+                  ${isEsports ? `<td>${gameBadge}</td>` : ''}
                   <td>${r.team_name || r.teamName ? `<span class="badge">${r.team_name || r.teamName}</span>` : 'Individual'}</td>
                   <td><strong>${r.full_name || r.fullName || 'Anonymous'}</strong></td>
                   <td>${r.phone || '-'}<br/><span style="color:#64748b;font-size:11px;">${r.email || '-'}</span></td>
                   <td>
-                    ${members.length > 0 ? `<strong>${members.length + 1} Members:</strong><div class="members-box">1. ${r.full_name || r.fullName} (Lead)<br/>${members.map((m, idx) => `${idx + 2}. ${m}`).join('<br/>')}</div>` : 'Individual Entry'}
+                    ${members.length > 0 ? `<strong>${members.length + 1} Players:</strong><div class="members-box">1. ${r.full_name || r.fullName} (Captain)<br/>${members.map((m, idx) => `${idx + 2}. ${m}`).join('<br/>')}</div>` : 'Individual Entry'}
                   </td>
                   <td>${r.college || 'CAHCET'}<br/><span style="color:#64748b;font-size:11px;">${r.department || ''} (${r.year || ''})</span></td>
                 </tr>
               `;
             }).join('')}
-            ${evtRegs.length === 0 ? '<tr><td colspan="7" style="text-align:center;padding:20px;">No registered participants for this event.</td></tr>' : ''}
+            ${evtRegs.length === 0 ? `<tr><td colspan="${isEsports ? 8 : 7}" style="text-align:center;padding:20px;">No registered participants for this track.</td></tr>` : ''}
           </tbody>
         </table>
 
@@ -247,6 +372,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
   // Open Send Modal
   const handleOpenSendModal = (evt) => {
     setSendTargetEvent(evt);
+    setSendGameScope('ALL');
     const assigned = coordinatorsList.find(c => Array.isArray(c.assignedEvents) && c.assignedEvents.map(e => e.toLowerCase()).includes(evt.id.toLowerCase()));
     if (assigned) {
       setSelectedCoordName(assigned.name);
@@ -264,8 +390,12 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
       return toast.error('Please select an Event Coordinator');
     }
 
+    const isEsports = isEsportsEvent(sendTargetEvent);
+    const effectiveScope = isEsports ? sendGameScope : 'ALL';
+
     setIsSendingList(true);
-    const toastId = toast.loading(`Dispatching list for "${sendTargetEvent.name}"...`);
+    const scopeLabel = isEsports && effectiveScope !== 'ALL' ? ` (${effectiveScope})` : '';
+    const toastId = toast.loading(`Dispatching list for "${sendTargetEvent.name}${scopeLabel}"...`);
 
     fetch(getApiUrl('/api/send-participant-list'), {
       method: 'POST',
@@ -273,7 +403,8 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
       body: JSON.stringify({
         eventId: sendTargetEvent.id,
         eventName: sendTargetEvent.name,
-        coordinatorName: selectedCoordName.trim()
+        coordinatorName: selectedCoordName.trim(),
+        gameScope: effectiveScope
       })
     })
       .then(res => res.json())
@@ -535,7 +666,17 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
 
   // Filtered registrations for Participant List view (event-wise & team-wise)
   const participantFilteredRegs = registrationsList.filter(r => {
-    if (partEventFilter !== 'all' && (r.event_id || r.eventId) !== partEventFilter) return false;
+    if (partEventFilter !== 'all') {
+      if (partEventFilter === 'nontech-05::FREE FIRE') {
+        if ((r.event_id || r.eventId) !== 'nontech-05') return false;
+        if (getRegEsportsGame(r) !== 'FREE FIRE') return false;
+      } else if (partEventFilter === 'nontech-05::BGMI') {
+        if ((r.event_id || r.eventId) !== 'nontech-05') return false;
+        if (getRegEsportsGame(r) !== 'BGMI') return false;
+      } else if ((r.event_id || r.eventId) !== partEventFilter) {
+        return false;
+      }
+    }
     if (partCategoryFilter !== 'all' && getEventCategory(r) !== partCategoryFilter) return false;
 
     const q = partSearch.toLowerCase().trim();
@@ -546,8 +687,9 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
     const phone = (r.phone || '').toLowerCase();
     const college = (r.college || '').toLowerCase();
     const members = getTeamMembers(r).join(' ').toLowerCase();
+    const game = getRegEsportsGame(r).toLowerCase();
 
-    return name.includes(q) || teamName.includes(q) || ticket.includes(q) || phone.includes(q) || college.includes(q) || members.includes(q);
+    return name.includes(q) || teamName.includes(q) || ticket.includes(q) || phone.includes(q) || college.includes(q) || members.includes(q) || game.includes(q);
   });
 
   // Print Registration Ticket / Receipt
@@ -2144,11 +2286,26 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                       style={S.select}
                     >
                       <option value="all">-- All Symposium Events ({eventsList.length}) --</option>
-                      {eventsList.map(evt => (
-                        <option key={evt.id} value={evt.id}>
-                          [{evt.category.toUpperCase()}] {evt.name}
-                        </option>
-                      ))}
+                      {eventsList.map(evt => {
+                        const isEsports = isEsportsEvent(evt);
+                        if (isEsports) {
+                          const allBoC = registrationsList.filter(r => (r.event_id || r.eventId) === evt.id);
+                          const ffBoC = allBoC.filter(r => getRegEsportsGame(r) === 'FREE FIRE');
+                          const bgmiBoC = allBoC.filter(r => getRegEsportsGame(r) === 'BGMI');
+                          return (
+                            <optgroup key={evt.id} label={`[${evt.category.toUpperCase()}] ${evt.name} (Esports Gaming)`}>
+                              <option value={evt.id}>{evt.name} — All Tracks ({allBoC.length})</option>
+                              <option value={`${evt.id}::FREE FIRE`}>🔥 Free Fire Only ({ffBoC.length})</option>
+                              <option value={`${evt.id}::BGMI`}>🎯 BGMI Only ({bgmiBoC.length})</option>
+                            </optgroup>
+                          );
+                        }
+                        return (
+                          <option key={evt.id} value={evt.id}>
+                            [{evt.category.toUpperCase()}] {evt.name}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
@@ -2169,12 +2326,27 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
               {viewMode === 'cards' && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.5rem' }}>
                   {eventsList
-                    .filter(evt => partEventFilter === 'all' || evt.id === partEventFilter)
+                    .filter(evt => {
+                      if (partEventFilter === 'all') return true;
+                      if (partEventFilter.startsWith('nontech-05::')) return evt.id === 'nontech-05';
+                      return evt.id === partEventFilter;
+                    })
                     .filter(evt => partCategoryFilter === 'all' || evt.category === partCategoryFilter)
                     .map(evt => {
                       const evtRegs = registrationsList.filter(r => (r.event_id || r.eventId) === evt.id);
                       const isTech = evt.category === 'technical';
+                      const isEsports = isEsportsEvent(evt);
                       const teamsCount = evtRegs.filter(r => getTeamMembers(r).length > 0 || r.team_name || r.teamName).length;
+                      const ffRegs = isEsports ? evtRegs.filter(r => getRegEsportsGame(r) === 'FREE FIRE') : [];
+                      const bgmiRegs = isEsports ? evtRegs.filter(r => getRegEsportsGame(r) === 'BGMI') : [];
+
+                      let cardGameFilter = bocGameFilter;
+                      if (partEventFilter === 'nontech-05::FREE FIRE') cardGameFilter = 'FREE FIRE';
+                      else if (partEventFilter === 'nontech-05::BGMI') cardGameFilter = 'BGMI';
+
+                      const displayedCardRegs = isEsports && cardGameFilter !== 'all'
+                        ? evtRegs.filter(r => getRegEsportsGame(r) === cardGameFilter)
+                        : evtRegs;
 
                       return (
                         <div key={evt.id} style={{ ...S.card, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -2182,9 +2354,24 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                             <div style={S.cardHeaderFlex}>
                               <div>
                                 <h3 style={S.cardTitle}>{evt.name}</h3>
-                                <span style={isTech ? S.badgeTech : S.badgeNonTech}>
-                                  {isTech ? 'Technical Event' : 'Non-Technical Event'}
-                                </span>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
+                                  <span style={isTech ? S.badgeTech : S.badgeNonTech}>
+                                    {isTech ? 'Technical Event' : 'Non-Technical Event'}
+                                  </span>
+                                  {isEsports && (
+                                    <span style={{
+                                      background: 'linear-gradient(135deg, #ea580c 0%, #0891b2 100%)',
+                                      color: '#ffffff',
+                                      padding: '0.15rem 0.5rem',
+                                      borderRadius: '6px',
+                                      fontSize: '0.7rem',
+                                      fontWeight: '800',
+                                      letterSpacing: '0.04em'
+                                    }}>
+                                      ESPORTS ARENA
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               <span style={S.idBadge}>
                                 {evt.fee || `₹${evt.feePerHead || 50}`}
@@ -2192,51 +2379,181 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                             </div>
 
                             <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                              {/* Event Stats Summary Bar */}
-                              <div style={{ display: 'flex', justifyContent: 'space-between', background: isDark ? '#1f2937' : '#f8fafc', padding: '0.75rem 1rem', borderRadius: '10px', border: isDark ? '1px solid #374151' : '1px solid #e2e8f0' }}>
+                              {/* Responsive Event Stats Summary Grid */}
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: isEsports ? 'repeat(auto-fit, minmax(70px, 1fr))' : 'repeat(3, 1fr)',
+                                gap: '0.5rem',
+                                background: isDark ? '#1f2937' : '#f8fafc',
+                                padding: '0.75rem 0.85rem',
+                                borderRadius: '10px',
+                                border: isDark ? '1px solid #374151' : '1px solid #e2e8f0',
+                                alignItems: 'center'
+                              }}>
                                 <div>
-                                  <span style={{ fontSize: '0.75rem', color: isDark ? '#9ca3af' : '#64748b', fontWeight: '600' }}>Registrations</span>
-                                  <div style={{ fontSize: '1.25rem', fontWeight: '800', color: isDark ? '#f9fafb' : '#0f172a' }}>{evtRegs.length}</div>
+                                  <span style={{ fontSize: '0.68rem', color: isDark ? '#9ca3af' : '#64748b', fontWeight: '700', textTransform: 'uppercase', display: 'block' }}>Total</span>
+                                  <div style={{ fontSize: '1.2rem', fontWeight: '800', color: isDark ? '#f9fafb' : '#0f172a' }}>{evtRegs.length}</div>
                                 </div>
+                                {isEsports ? (
+                                  <>
+                                    <div>
+                                      <span style={{ fontSize: '0.68rem', color: '#f97316', fontWeight: '700', textTransform: 'uppercase', display: 'block' }}>🔥 FF</span>
+                                      <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#f97316' }}>{ffRegs.length}</div>
+                                    </div>
+                                    <div>
+                                      <span style={{ fontSize: '0.68rem', color: '#06b6d4', fontWeight: '700', textTransform: 'uppercase', display: 'block' }}>🎯 BGMI</span>
+                                      <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#06b6d4' }}>{bgmiRegs.length}</div>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div>
+                                    <span style={{ fontSize: '0.68rem', color: isDark ? '#9ca3af' : '#64748b', fontWeight: '700', textTransform: 'uppercase', display: 'block' }}>Teams</span>
+                                    <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#10b981' }}>{teamsCount}</div>
+                                  </div>
+                                )}
                                 <div>
-                                  <span style={{ fontSize: '0.75rem', color: isDark ? '#9ca3af' : '#64748b', fontWeight: '600' }}>Teams Count</span>
-                                  <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#10b981' }}>{teamsCount}</div>
-                                </div>
-                                <div>
-                                  <span style={{ fontSize: '0.75rem', color: isDark ? '#9ca3af' : '#64748b', fontWeight: '600' }}>Venue</span>
-                                  <div style={{ fontSize: '0.85rem', fontWeight: '700', color: isDark ? '#93c5fd' : '#2563eb', marginTop: '4px' }}>{evt.venue || 'Main Lab'}</div>
+                                  <span style={{ fontSize: '0.68rem', color: isDark ? '#9ca3af' : '#64748b', fontWeight: '700', textTransform: 'uppercase', display: 'block' }}>Venue</span>
+                                  <div style={{ fontSize: '0.8rem', fontWeight: '700', color: isDark ? '#93c5fd' : '#2563eb', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{evt.venue || 'Main Lab'}</div>
                                 </div>
                               </div>
 
+                              {/* Dedicated Esports Track Selector for Battle of Champions */}
+                              {isEsports && (
+                                <div style={{ display: 'flex', gap: '6px', background: isDark ? '#111827' : '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setBocGameFilter('all')}
+                                    style={{
+                                      flex: 1,
+                                      padding: '0.35rem 0.5rem',
+                                      fontSize: '0.72rem',
+                                      fontWeight: '700',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      background: cardGameFilter === 'all' ? (isDark ? '#374151' : '#ffffff') : 'transparent',
+                                      color: cardGameFilter === 'all' ? (isDark ? '#ffffff' : '#0f172a') : (isDark ? '#9ca3af' : '#64748b'),
+                                      boxShadow: cardGameFilter === 'all' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                                    }}
+                                  >
+                                    All ({evtRegs.length})
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setBocGameFilter('FREE FIRE')}
+                                    style={{
+                                      flex: 1,
+                                      padding: '0.35rem 0.5rem',
+                                      fontSize: '0.72rem',
+                                      fontWeight: '700',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      background: cardGameFilter === 'FREE FIRE' ? '#ea580c' : 'transparent',
+                                      color: cardGameFilter === 'FREE FIRE' ? '#ffffff' : '#f97316',
+                                      boxShadow: cardGameFilter === 'FREE FIRE' ? '0 1px 3px rgba(0,0,0,0.2)' : 'none'
+                                    }}
+                                  >
+                                    🔥 Free Fire ({ffRegs.length})
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setBocGameFilter('BGMI')}
+                                    style={{
+                                      flex: 1,
+                                      padding: '0.35rem 0.5rem',
+                                      fontSize: '0.72rem',
+                                      fontWeight: '700',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      background: cardGameFilter === 'BGMI' ? '#0891b2' : 'transparent',
+                                      color: cardGameFilter === 'BGMI' ? '#ffffff' : '#06b6d4',
+                                      boxShadow: cardGameFilter === 'BGMI' ? '0 1px 3px rgba(0,0,0,0.2)' : 'none'
+                                    }}
+                                  >
+                                    🎯 BGMI ({bgmiRegs.length})
+                                  </button>
+                                </div>
+                              )}
+
                               {/* Participant & Team Member Preview */}
                               <div>
-                                <span style={{ fontSize: '0.8rem', fontWeight: '700', color: isDark ? '#cbd5e1' : '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                                  Participants & Team Members ({evtRegs.length})
-                                </span>
-                                <div style={{ maxHeight: '180px', overflowY: 'auto', marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                  {evtRegs.map((reg, idx) => {
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                  <span style={{ fontSize: '0.8rem', fontWeight: '700', color: isDark ? '#cbd5e1' : '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                    {isEsports 
+                                      ? `${cardGameFilter === 'all' ? 'Esports Squads' : (cardGameFilter === 'BGMI' ? '🎯 BGMI Squads' : '🔥 Free Fire Squads')} (${displayedCardRegs.length})` 
+                                      : `Participants & Team Members (${evtRegs.length})`}
+                                  </span>
+                                </div>
+
+                                <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                  {displayedCardRegs.map((reg, idx) => {
                                     const members = getTeamMembers(reg);
                                     const teamName = reg.team_name || reg.teamName;
+                                    const game = isEsports ? getRegEsportsGame(reg) : null;
 
                                     return (
                                       <div key={idx} style={{ background: isDark ? '#1f2937' : '#f1f5f9', padding: '0.65rem 0.85rem', borderRadius: '8px', border: isDark ? '1px solid #374151' : '1px solid #e2e8f0' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                          <span style={{ fontWeight: '700', fontSize: '0.88rem', color: isDark ? '#f9fafb' : '#0f172a' }}>
-                                            {reg.full_name || reg.fullName || 'Participant'}
-                                          </span>
-                                          {teamName && (
-                                            <span style={{ background: isDark ? '#064e3b' : '#ecfdf5', color: isDark ? '#6ee7b7' : '#047857', padding: '0.15rem 0.45rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700' }}>
-                                              {teamName}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ fontWeight: '700', fontSize: '0.88rem', color: isDark ? '#f9fafb' : '#0f172a' }}>
+                                              {reg.full_name || reg.fullName || 'Participant'}
                                             </span>
-                                          )}
+                                            {isEsports && (
+                                              <span style={{
+                                                background: game === 'BGMI' ? 'rgba(6, 182, 212, 0.15)' : 'rgba(249, 115, 22, 0.15)',
+                                                color: game === 'BGMI' ? '#06b6d4' : '#f97316',
+                                                border: `1px solid ${game === 'BGMI' ? 'rgba(6, 182, 212, 0.35)' : 'rgba(249, 115, 22, 0.35)'}`,
+                                                padding: '0.1rem 0.45rem',
+                                                borderRadius: '999px',
+                                                fontSize: '0.65rem',
+                                                fontWeight: '800'
+                                              }}>
+                                                {game === 'BGMI' ? '🎯 BGMI' : '🔥 FREE FIRE'}
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                            {teamName && (
+                                              <span style={{ background: isDark ? '#064e3b' : '#ecfdf5', color: isDark ? '#6ee7b7' : '#047857', padding: '0.15rem 0.45rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700' }}>
+                                                {teamName}
+                                              </span>
+                                            )}
+                                            {reg.phone && (
+                                              <button
+                                                type="button"
+                                                title={`Message Captain on WhatsApp (${reg.phone})`}
+                                                onClick={() => handleShareSquadWhatsApp(reg, evt)}
+                                                style={{
+                                                  background: '#22c55e',
+                                                  color: '#ffffff',
+                                                  border: 'none',
+                                                  borderRadius: '5px',
+                                                  padding: '0.15rem 0.45rem',
+                                                  fontSize: '0.68rem',
+                                                  cursor: 'pointer',
+                                                  display: 'inline-flex',
+                                                  alignItems: 'center',
+                                                  gap: '3px',
+                                                  fontWeight: '700'
+                                                }}
+                                              >
+                                                <FaWhatsapp size={10} /> WA
+                                              </button>
+                                            )}
+                                          </div>
                                         </div>
-                                        <div style={{ fontSize: '0.78rem', color: isDark ? '#9ca3af' : '#64748b', marginTop: '2px' }}>
+
+                                        <div style={{ fontSize: '0.78rem', color: isDark ? '#9ca3af' : '#64748b', marginTop: '3px' }}>
                                           {reg.college} • {reg.department}
                                         </div>
+
                                         {members.length > 0 && (
                                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
                                             <span style={{ fontSize: '0.72rem', color: isDark ? '#93c5fd' : '#1d4ed8', fontWeight: '700' }}>
-                                              Members ({members.length + 1}):
+                                              Squad ({members.length + 1}):
                                             </span>
                                             {members.map((m, i) => (
                                               <span key={i} style={{ background: isDark ? '#374151' : '#cbd5e1', color: isDark ? '#f9fafb' : '#0f172a', padding: '0.1rem 0.35rem', borderRadius: '4px', fontSize: '0.7rem' }}>
@@ -2248,9 +2565,9 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                                       </div>
                                     );
                                   })}
-                                  {evtRegs.length === 0 && (
+                                  {displayedCardRegs.length === 0 && (
                                     <div style={{ color: isDark ? '#6b7280' : '#94a3b8', fontSize: '0.82rem', padding: '0.75rem', textAlign: 'center' }}>
-                                      No participants registered yet for this event.
+                                      No participants registered yet for this selection.
                                     </div>
                                   )}
                                 </div>
@@ -2258,19 +2575,37 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                             </div>
                           </div>
 
-                          {/* Action Buttons: Export PDF & Send to Event Coordinator */}
-                          <div style={{ padding: '1rem 1.25rem', borderTop: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', background: isDark ? '#1a2234' : '#f8fafc', display: 'flex', gap: '0.5rem' }}>
+                          {/* Action Buttons: Export PDF, WhatsApp Roster, Copy & Send */}
+                          <div style={{ padding: '0.85rem 1.25rem', borderTop: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', background: isDark ? '#1a2234' : '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                             <button
-                              onClick={() => handleExportPDF(evt)}
-                              style={{ ...S.filterBtn, flex: 1, justifyContent: 'center', background: isDark ? '#1e3a8a' : '#eff6ff', color: isDark ? '#93c5fd' : '#1d4ed8', borderColor: isDark ? '#1e40af' : '#bfdbfe' }}
+                              onClick={() => handleExportPDF(evt, isEsports ? cardGameFilter : 'ALL')}
+                              style={{ ...S.filterBtn, flex: 1, minWidth: '105px', justifyContent: 'center', background: isDark ? '#1e3a8a' : '#eff6ff', color: isDark ? '#93c5fd' : '#1d4ed8', borderColor: isDark ? '#1e40af' : '#bfdbfe', fontSize: '0.78rem', padding: '0.5rem 0.6rem' }}
                             >
-                              <FaFilePdf size={13} /> Export PDF
+                              <FaFilePdf size={12} /> {isEsports && cardGameFilter !== 'all' ? `Export ${cardGameFilter}` : 'Export PDF'}
                             </button>
+                            {isEsports && (
+                              <>
+                                <button
+                                  onClick={() => handleShareRosterWhatsApp(evt, cardGameFilter)}
+                                  title="Share Tournament Roster Sheet via WhatsApp"
+                                  style={{ ...S.filterBtn, flex: 1, minWidth: '105px', justifyContent: 'center', background: 'rgba(34, 197, 94, 0.12)', color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.3)', fontSize: '0.78rem', padding: '0.5rem 0.6rem' }}
+                                >
+                                  <FaWhatsapp size={12} /> WhatsApp
+                                </button>
+                                <button
+                                  onClick={() => handleCopyRosterToClipboard(evt, cardGameFilter)}
+                                  title="Copy formatted squad sheet to clipboard"
+                                  style={{ ...S.filterBtn, flex: 1, minWidth: '85px', justifyContent: 'center', background: isDark ? '#374151' : '#f1f5f9', color: isDark ? '#e2e8f0' : '#334155', fontSize: '0.78rem', padding: '0.5rem 0.6rem' }}
+                                >
+                                  <FaCopy size={11} /> Copy
+                                </button>
+                              </>
+                            )}
                             <button
                               onClick={() => handleOpenSendModal(evt)}
-                              style={{ ...S.primaryBtn, flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.85rem', padding: '0.55rem 0.85rem' }}
+                              style={{ ...S.primaryBtn, flex: 1, minWidth: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
                             >
-                              <FaPaperPlane size={12} /> Send
+                              <FaPaperPlane size={11} /> Send
                             </button>
                           </div>
                         </div>
@@ -2287,7 +2622,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                       Participant & Team List ({participantFilteredRegs.length})
                     </h3>
                     <span style={{ fontSize: '0.85rem', color: isDark ? '#9ca3af' : '#64748b' }}>
-                      Showing participants for {partEventFilter === 'all' ? 'All Events' : (eventsList.find(e => e.id === partEventFilter)?.name || partEventFilter)}.
+                      Showing participants for {partEventFilter === 'all' ? 'All Events' : (partEventFilter.includes('::') ? `${partEventFilter.replace('nontech-05::', 'Battle of Champions — ')}` : (eventsList.find(e => e.id === partEventFilter)?.name || partEventFilter))}.
                     </span>
                   </div>
 
@@ -2296,7 +2631,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                       <thead>
                         <tr>
                           <th style={S.th}>Ticket</th>
-                          <th style={S.th}>Event</th>
+                          <th style={S.th}>Event & Track</th>
                           <th style={S.th}>Team Name</th>
                           <th style={S.th}>Lead Participant</th>
                           <th style={S.th}>Team Members</th>
@@ -2313,6 +2648,8 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                           const members = getTeamMembers(reg);
                           const teamName = reg.team_name || reg.teamName || (members.length > 0 ? 'Team' : '-');
                           const isTech = getEventCategory(reg) === 'technical';
+                          const isEsports = isEsportsEvent(evt || { id: reg.event_id || reg.eventId, name: evtName });
+                          const esportsGame = isEsports ? getRegEsportsGame(reg) : null;
 
                           return (
                             <tr key={i} style={S.tr}>
@@ -2320,10 +2657,22 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                               <td style={S.td}>
                                 <div>
                                   <span style={S.strongText}>{evtName}</span>
-                                  <div>
+                                  <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
                                     <span style={isTech ? S.badgeTech : S.badgeNonTech}>
                                       {isTech ? 'Tech' : 'Non-Tech'}
                                     </span>
+                                    {isEsports && (
+                                      <span style={{
+                                        background: esportsGame === 'BGMI' ? '#0891b2' : '#ea580c',
+                                        color: '#ffffff',
+                                        padding: '0.12rem 0.45rem',
+                                        borderRadius: '4px',
+                                        fontWeight: '800',
+                                        fontSize: '0.7rem'
+                                      }}>
+                                        {esportsGame === 'BGMI' ? '🎯 BGMI' : '🔥 FREE FIRE'}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </td>
@@ -2345,7 +2694,27 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                               </td>
                               <td style={S.td}>
                                 <div>
-                                  <span style={S.strongText}>{name}</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={S.strongText}>{name}</span>
+                                    {reg.phone && (
+                                      <button
+                                        type="button"
+                                        title={`Chat with ${name} on WhatsApp`}
+                                        onClick={() => handleShareSquadWhatsApp(reg, evt || { name: evtName, id: reg.event_id })}
+                                        style={{
+                                          background: 'transparent',
+                                          border: 'none',
+                                          color: '#22c55e',
+                                          cursor: 'pointer',
+                                          padding: '2px',
+                                          display: 'inline-flex',
+                                          alignItems: 'center'
+                                        }}
+                                      >
+                                        <FaWhatsapp size={14} />
+                                      </button>
+                                    )}
+                                  </div>
                                   <div style={S.tableSubText}>{reg.phone} • {reg.email}</div>
                                 </div>
                               </td>
@@ -2434,6 +2803,89 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                 </div>
 
                 <div style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  {/* Esports Division Scope Selector (for Battle of Champions) */}
+                  {isEsportsEvent(sendTargetEvent) && (
+                    <div style={{ background: isDark ? 'rgba(30, 41, 59, 0.7)' : '#f8fafc', padding: '1rem', borderRadius: '12px', border: isDark ? '1px solid #374151' : '1px solid #e2e8f0' }}>
+                      <label style={{ ...S.label, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.5rem' }}>
+                        <FaGamepad size={13} style={{ color: '#ea580c' }} /> Select Esports Tournament Division to Dispatch *
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                        {[
+                          { id: 'ALL', label: 'All Tracks', count: registrationsList.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id).length, bg: '#3b82f6' },
+                          { id: 'FREE FIRE', label: '🔥 Free Fire', count: registrationsList.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id && getRegEsportsGame(r) === 'FREE FIRE').length, bg: '#ea580c' },
+                          { id: 'BGMI', label: '🎯 BGMI', count: registrationsList.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id && getRegEsportsGame(r) === 'BGMI').length, bg: '#0891b2' }
+                        ].map(tab => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setSendGameScope(tab.id)}
+                            style={{
+                              padding: '0.55rem 0.5rem',
+                              borderRadius: '8px',
+                              border: sendGameScope === tab.id ? `2px solid ${tab.bg}` : (isDark ? '1px solid #374151' : '1px solid #cbd5e1'),
+                              background: sendGameScope === tab.id ? (isDark ? '#1e293b' : '#eff6ff') : (isDark ? '#111827' : '#ffffff'),
+                              cursor: 'pointer',
+                              textAlign: 'center'
+                            }}
+                          >
+                            <div style={{ fontSize: '0.75rem', fontWeight: '800', color: sendGameScope === tab.id ? (isDark ? '#ffffff' : '#0f172a') : (isDark ? '#9ca3af' : '#64748b') }}>
+                              {tab.label}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', fontWeight: '800', color: tab.bg, marginTop: '2px' }}>
+                              {tab.count} squads
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* 1-Click WhatsApp & Clipboard Sharing Tools */}
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: isDark ? '1px solid #374151' : '1px solid #e2e8f0' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleShareRosterWhatsApp(sendTargetEvent, sendGameScope, (coordinatorsList.find(c => c.name === selectedCoordName)?.phone || ''))}
+                          style={{
+                            flex: 1,
+                            background: '#22c55e',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '0.45rem 0.75rem',
+                            fontSize: '0.78rem',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <FaWhatsapp size={13} /> Share on WhatsApp
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyRosterToClipboard(sendTargetEvent, sendGameScope)}
+                          style={{
+                            flex: 1,
+                            background: isDark ? '#374151' : '#f1f5f9',
+                            color: isDark ? '#f9fafb' : '#0f172a',
+                            border: isDark ? '1px solid #4b5563' : '1px solid #cbd5e1',
+                            borderRadius: '8px',
+                            padding: '0.45rem 0.75rem',
+                            fontSize: '0.78rem',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <FaCopy size={12} /> Copy Roster Text
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div style={S.modalInputGroup}>
                     <label style={S.label}>Select Event Coordinator Account / Name *</label>
                     {coordinatorsList.length > 0 ? (
@@ -2465,9 +2917,23 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                       Summary to Dispatch:
                     </span>
                     <ul style={{ margin: '0.4rem 0 0 1.2rem', padding: 0, fontSize: '0.82rem', color: isDark ? '#9ca3af' : '#64748b' }}>
-                      <li>Event: {sendTargetEvent.name} ({sendTargetEvent.category.toUpperCase()})</li>
-                      <li>Total Registered Participants: {registrationsList.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id).length}</li>
-                      <li>Includes complete team member rosters & ticket codes.</li>
+                      <li>Event: <strong>{sendTargetEvent.name}</strong> ({sendTargetEvent.category.toUpperCase()})</li>
+                      {isEsportsEvent(sendTargetEvent) && (
+                        <li>
+                          Esports Division: <strong style={{ color: sendGameScope === 'FREE FIRE' ? '#ea580c' : (sendGameScope === 'BGMI' ? '#0891b2' : '#3b82f6') }}>
+                            {sendGameScope === 'ALL' ? 'All Divisions (Free Fire + BGMI)' : `${sendGameScope} Only`}
+                          </strong>
+                        </li>
+                      )}
+                      <li>
+                        Total Entries to Send: <strong>
+                          {isEsportsEvent(sendTargetEvent) && sendGameScope !== 'ALL'
+                            ? registrationsList.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id && getRegEsportsGame(r) === sendGameScope).length
+                            : registrationsList.filter(r => (r.event_id || r.eventId) === sendTargetEvent.id).length}
+                        </strong>
+                      </li>
+                      <li>Target Recipient: <strong>{selectedCoordName || 'Coordinator'}</strong></li>
+                      <li>Includes complete squad rosters, ticket IDs, and captain contact numbers.</li>
                     </ul>
                   </div>
 
@@ -2483,9 +2949,20 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                       type="button"
                       disabled={isSendingList}
                       onClick={handleConfirmSendList}
-                      style={{ ...S.primaryBtn, flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '0.75rem' }}
+                      style={{
+                        ...S.primaryBtn,
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '0.75rem',
+                        background: isEsportsEvent(sendTargetEvent) && sendGameScope === 'FREE FIRE'
+                          ? '#ea580c'
+                          : (isEsportsEvent(sendTargetEvent) && sendGameScope === 'BGMI' ? '#0891b2' : S.primaryBtn.background)
+                      }}
                     >
-                      <FaPaperPlane size={12} /> {isSendingList ? 'Sending...' : 'Confirm & Send List'}
+                      <FaPaperPlane size={12} /> {isSendingList ? 'Sending...' : (isEsportsEvent(sendTargetEvent) && sendGameScope !== 'ALL' ? `Confirm & Send ${sendGameScope}` : 'Confirm & Send List')}
                     </button>
                   </div>
                 </div>

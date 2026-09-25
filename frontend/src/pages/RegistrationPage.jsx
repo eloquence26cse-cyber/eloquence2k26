@@ -369,12 +369,21 @@ export default function RegistrationPage({ eventId, initialGame, onNavigate }) {
     const eventSpec = EVENT_TEAM_SPECS[normEventId] || null;
 
     const participantCount = Math.max(1, 1 + (Array.isArray(fields.teamMembers) ? fields.teamMembers.length : 0));
-    const rawPerHead = Number(selectedEvent?.feePerHead || selectedEvent?.fee_per_head || 0);
+    const isEsportsEvent = normEventId === 'nontech-05' || selectedEvent?.feeType === 'per_squad' || selectedEvent?.fee_type === 'per_squad';
+
+    let rawPerHead = Number(selectedEvent?.feePerHead || selectedEvent?.fee_per_head || 0);
+    if (isEsportsEvent) {
+      rawPerHead = 50;
+    }
     const feePerHead = rawPerHead > 0 ? rawPerHead : (eventSpec?.feePerHead || (normEventId === 'tech-01' ? 100 : 50));
     
-    // Amount is directly proportional to number of participants: count * feePerHead
-    const total = participantCount * feePerHead;
-    const formula = `₹${feePerHead} × ${participantCount} participant${participantCount > 1 ? 's' : ''}`;
+    let total = participantCount * feePerHead;
+    let formula = `₹${feePerHead} × ${participantCount} participant${participantCount > 1 ? 's' : ''}`;
+
+    if (isEsportsEvent) {
+      total = 200;
+      formula = `₹50 × ${participantCount} participants = ₹200 (₹200 / squad)`;
+    }
 
     return {
       total,

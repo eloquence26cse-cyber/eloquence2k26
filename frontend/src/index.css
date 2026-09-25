@@ -8127,94 +8127,178 @@ img {
 
 .rules-coords-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 1.1rem;
+  width: 100%;
 }
 
 .rules-embedded-coord-chip {
-  background: rgba(4, 16, 10, 0.65);
-  border: 1px solid rgba(57, 255, 136, 0.18);
-  border-radius: 12px;
-  padding: 0.85rem 1rem;
+  background: rgba(4, 16, 10, 0.75);
+  border: 1px solid rgba(57, 255, 136, 0.22);
+  border-radius: 14px;
+  padding: 1.1rem 1.25rem;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: space-between;
-  gap: 0.75rem;
-  transition: all 0.25s ease;
+  gap: 0.9rem;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .rules-embedded-coord-chip:hover {
-  background: rgba(6, 24, 14, 0.85);
-  border-color: rgba(57, 255, 136, 0.45);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 12px rgba(57, 255, 136, 0.15);
+  background: rgba(6, 26, 16, 0.9);
+  border-color: rgba(57, 255, 136, 0.55);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 16px rgba(57, 255, 136, 0.2);
+}
+
+/* Free Fire Track Card Accent */
+.rules-embedded-coord-chip.coord-chip-ff {
+  background: linear-gradient(145deg, rgba(32, 14, 6, 0.82) 0%, rgba(16, 7, 3, 0.92) 100%);
+  border: 1px solid rgba(249, 115, 22, 0.38);
+}
+.rules-embedded-coord-chip.coord-chip-ff:hover {
+  border-color: rgba(249, 115, 22, 0.7);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), 0 0 18px rgba(249, 115, 22, 0.3);
+}
+
+/* BGMI Track Card Accent */
+.rules-embedded-coord-chip.coord-chip-bgmi {
+  background: linear-gradient(145deg, rgba(6, 26, 36, 0.82) 0%, rgba(3, 13, 18, 0.92) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.38);
+}
+.rules-embedded-coord-chip.coord-chip-bgmi:hover {
+  border-color: rgba(6, 182, 212, 0.7);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), 0 0 18px rgba(6, 182, 212, 0.3);
 }
 
 .coord-chip-info {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
+  gap: 0.3rem;
+  width: 100%;
 }
 
 .coord-chip-badge {
   font-family: var(--font-display);
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   font-weight: 700;
-  color: rgba(57, 255, 136, 0.8);
+  color: rgba(57, 255, 136, 0.85);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
+.coord-chip-ff .coord-chip-badge {
+  color: rgba(249, 115, 22, 0.9);
+}
+
+.coord-chip-bgmi .coord-chip-badge {
+  color: rgba(6, 182, 212, 0.9);
+}
+
 .coord-chip-name {
   font-family: var(--font-display);
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   font-weight: 800;
   color: #FFFFFF;
   margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
+  letter-spacing: 0.015em;
+}
+
+.coord-chip-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
 }
 
 .coord-chip-call-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   font-family: var(--font-mono, monospace);
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 700;
   color: #39FF88;
   text-decoration: none;
-  padding: 0.35rem 0.65rem;
+  padding: 0.5rem 0.85rem;
   background: rgba(57, 255, 136, 0.08);
-  border: 1px solid rgba(57, 255, 136, 0.25);
-  border-radius: 6px;
-  flex-shrink: 0;
+  border: 1px solid rgba(57, 255, 136, 0.28);
+  border-radius: 8px;
+  flex: 1;
   transition: all 0.2s ease;
+  letter-spacing: 0.02em;
+}
+
+.coord-chip-ff .coord-chip-call-btn {
+  color: #fb923c;
+  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.35);
+}
+.coord-chip-ff .coord-chip-call-btn:hover {
+  background: rgba(249, 115, 22, 0.28);
+  border-color: #f97316;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.45);
+}
+
+.coord-chip-bgmi .coord-chip-call-btn {
+  color: #38bdf8;
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(6, 182, 212, 0.35);
+}
+.coord-chip-bgmi .coord-chip-call-btn:hover {
+  background: rgba(6, 182, 212, 0.28);
+  border-color: #06b6d4;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.45);
 }
 
 .coord-chip-call-btn:hover {
   background: rgba(57, 255, 136, 0.25);
   border-color: #39FF88;
   color: #ffffff;
-  box-shadow: 0 0 10px rgba(57, 255, 136, 0.4);
+  box-shadow: 0 0 12px rgba(57, 255, 136, 0.45);
 }
 
-@media (max-width: 600px) {
+.coord-chip-wa-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 38px;
+  border-radius: 8px;
+  background: rgba(37, 211, 102, 0.12);
+  border: 1px solid rgba(37, 211, 102, 0.35);
+  color: #25D366;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.coord-chip-wa-btn:hover {
+  background: #25D366;
+  color: #ffffff;
+  border-color: #25D366;
+  box-shadow: 0 0 12px rgba(37, 211, 102, 0.5);
+  transform: scale(1.05);
+}
+
+@media (max-width: 640px) {
   .rules-coords-grid {
     grid-template-columns: 1fr;
+    gap: 0.85rem;
   }
   .rules-embedded-coord-chip {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.6rem;
+    padding: 1rem;
   }
-  .coord-chip-actions-group {
-    width: 100%;
-  }
-  .coord-chip-call-btn {
-    flex: 1;
-    justify-content: center;
+  .coord-chip-name {
+    font-size: 1rem;
   }
 }
 

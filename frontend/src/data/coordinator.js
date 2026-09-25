@@ -268,9 +268,25 @@ const coordinatorsData = {
       },
       {
         slot: 'B',
-        name: 'Vijaya Kumar M.',
-        phone: '6382960769',
-        displayPhone: '+91 63829 60769',
+        name: 'Suresh V',
+        phone: '6379464434',
+        displayPhone: '+91 63794 64434',
+        role: 'Lead Coordinator',
+        game: 'Free Fire'
+      },
+      {
+        slot: 'C',
+        name: 'Mohamed Adnan F',
+        phone: '9080969891',
+        displayPhone: '+91 90809 69891',
+        role: 'Lead Coordinator',
+        game: 'BGMI'
+      },
+      {
+        slot: 'D',
+        name: 'Syed Zaid Ahmed',
+        phone: '8056463976',
+        displayPhone: '+91 80564 63976',
         role: 'Lead Coordinator',
         game: 'BGMI'
       }

@@ -176,9 +176,15 @@ export function normalizeEvent(e) {
   }
 
   // Resolve fees - NEVER allow feePerHead to be 0 or falsy
-  const candidateFee = Number(e.feePerHead || e.fee_per_head || 0);
+  let candidateFee = Number(e.feePerHead || e.fee_per_head || 0);
+  if (normId === 'nontech-05' || e.feeType === 'per_squad' || e.fee_type === 'per_squad') {
+    candidateFee = 50;
+  }
   const feePerHead = candidateFee > 0 ? candidateFee : (spec?.feePerHead || (normId === 'tech-01' ? 100 : 50));
   const feeType = e.feeType || e.fee_type || spec?.feeType || 'per_head';
+  const resolvedFee = (normId === 'nontech-05' || feeType === 'per_squad')
+    ? '₹200 per squad'
+    : (e.fee || (feeType === 'per_team' ? `₹${feePerHead * maxMembers} per team` : `₹${feePerHead} per head`));
 
   return {
     ...e,
@@ -194,7 +200,7 @@ export function normalizeEvent(e) {
     max_members: maxMembers,
     teamSize,
     team_size: teamSize,
-    fee: e.fee || (feeType === 'per_squad' || feeType === 'per_team' ? `₹${feePerHead * maxMembers} per team` : `₹${feePerHead} per head`),
+    fee: resolvedFee,
     feePerHead,
     fee_per_head: feePerHead,
     feeType,

@@ -18,7 +18,9 @@ import {
   FaCopy,
   FaCheck,
   FaClock,
-  FaShieldAlt
+  FaShieldAlt,
+  FaFire,
+  FaCrosshairs
 } from 'react-icons/fa';
 import { getApiUrl } from '../config/api';
 
@@ -46,6 +48,7 @@ export default function EditRegistrationModal({
   // Event & Team
   const [eventId, setEventId] = useState('');
   const [teamName, setTeamName] = useState('');
+  const [game, setGame] = useState('FREE FIRE');
   const [teamMembers, setTeamMembers] = useState([]);
 
   // Payment & Status
@@ -70,6 +73,8 @@ export default function EditRegistrationModal({
 
     setEventId(registration.eventId || registration.event_id || '');
     setTeamName(registration.teamName || registration.team_name || '');
+    const detGame = registration.game || (String(registration.teamName || registration.team_name || registration.eventName || '').toUpperCase().includes('BGMI') ? 'BGMI' : 'FREE FIRE');
+    setGame(detGame);
 
     // Normalize team members
     const members = Array.isArray(registration.teamMembers) && registration.teamMembers.length > 0
@@ -196,6 +201,7 @@ export default function EditRegistrationModal({
       year: year.trim(),
       eventId,
       teamName: teamName.trim() || null,
+      game: (eventId === 'nontech-05' || String(eventId).includes('battle') || (eventsList.find(e => e.id === eventId)?.name || '').toUpperCase().includes('BATTLE')) ? game : null,
       teamMembers: teamMembers.filter((m) => m.name && m.name.trim()),
       membersCount: (teamMembers.filter((m) => m.name && m.name.trim()).length) + 1,
       totalFee: Number(totalFee || 0),
@@ -565,6 +571,61 @@ export default function EditRegistrationModal({
                     />
                   </div>
                 </div>
+
+                {/* Esports Game Selector for Battle of Champions */}
+                {(eventId === 'nontech-05' || String(eventId).includes('battle') || (eventsList.find(e => e.id === eventId)?.name || '').toUpperCase().includes('BATTLE')) && (
+                  <div style={{ marginTop: '0.85rem', marginBottom: '0.5rem', background: isDark ? '#1a2234' : '#f8fafc', padding: '0.85rem 1rem', borderRadius: '12px', border: isDark ? '1px solid #2563eb' : '1px solid #bfdbfe' }}>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em', color: isDark ? '#93c5fd' : '#1d4ed8', marginBottom: '8px' }}>
+                      Esports Battle Royale Game *
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setGame('FREE FIRE')}
+                        style={{
+                          padding: '0.65rem 1rem',
+                          borderRadius: '10px',
+                          border: game === 'FREE FIRE' ? '2px solid #f97316' : (isDark ? '1px solid #374151' : '1px solid #cbd5e1'),
+                          background: game === 'FREE FIRE' ? (isDark ? 'rgba(249, 115, 22, 0.2)' : '#fff7ed') : (isDark ? '#1f2937' : '#ffffff'),
+                          color: game === 'FREE FIRE' ? '#ea580c' : (isDark ? '#9ca3af' : '#64748b'),
+                          fontWeight: '800',
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <FaFire size={14} style={{ color: '#ea580c' }} />
+                        <span>FREE FIRE</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGame('BGMI')}
+                        style={{
+                          padding: '0.65rem 1rem',
+                          borderRadius: '10px',
+                          border: game === 'BGMI' ? '2px solid #06b6d4' : (isDark ? '1px solid #374151' : '1px solid #cbd5e1'),
+                          background: game === 'BGMI' ? (isDark ? 'rgba(6, 182, 212, 0.2)' : '#ecfeff') : (isDark ? '#1f2937' : '#ffffff'),
+                          color: game === 'BGMI' ? '#0891b2' : (isDark ? '#9ca3af' : '#64748b'),
+                          fontWeight: '800',
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <FaCrosshairs size={14} style={{ color: '#0891b2' }} />
+                        <span>BGMI</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Team Members List */}
                 <div style={{ marginTop: '1.25rem' }}>

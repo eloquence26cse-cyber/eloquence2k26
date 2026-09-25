@@ -84,17 +84,17 @@
       {
         "desc": "2. Each question will have 20 seconds to answer.",
         "name": "1. Round 1 will have 30 Questions.",
-        "time": "20 seconds"
+        "time": "10 Min"
       },
       {
         "desc": "2. Each question will have 25 seconds to answer.",
         "name": "1. Round 2 will have 25 questions",
-        "time": "25 seconds"
+        "time": "13 `Min"
       },
       {
         "desc": "2. Each question will have 30 seconds to answer.",
         "name": "1. Round 3 will have 20 questions.",
-        "time": "30 seconds"
+        "time": "15 Min"
       }
     ],
     "guidelines": [
@@ -106,7 +106,7 @@
       "Max 3 per squad"
     ],
     "created_at": "2026-09-16T10:16:14.234348+00:00",
-    "updated_at": "2026-09-24T17:57:04.732+00:00",
+    "updated_at": "2026-09-25T06:11:34.025+00:00",
     "venue_image": ""
   },
   {
@@ -218,7 +218,7 @@
     "min_members": 4,
     "max_members": 4,
     "fee": "₹200 per squad",
-    "fee_per_head": 200,
+    "fee_per_head": 50,
     "fee_type": "per_squad",
     "is_team": true,
     "tag": "Mobile Gaming",
@@ -379,8 +379,8 @@
     "fee_type": "per_head",
     "is_team": true,
     "tag": "Technical Presentation",
-    "venue": "CSE & AIDS Smart room",
-    "timing": "10:40 AM TO 3:00 PM",
+    "venue": "TECH TOWER SEMINAR HALL/CSE SMART ROOM",
+    "timing": "11:00 AM TO 3:00 PM",
     "description": "Showcase your innovative ideas and technical presentation skills using structured slide decks.",
     "image": "/events/card_ppt_presentation-BHzUng4c.png",
     "rules": [
@@ -414,7 +414,7 @@
       "₹100/head"
     ],
     "created_at": "2026-09-16T10:16:13.515539+00:00",
-    "updated_at": "2026-09-24T07:13:13.416+00:00",
+    "updated_at": "2026-09-25T05:48:29.315+00:00",
     "venue_image": "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=1200&q=80"
   },
   {
@@ -611,58 +611,6 @@
     "highlights": [],
     "created_at": "2026-09-22T06:48:29.559452+00:00",
     "updated_at": "2026-09-23T05:59:33.694+00:00",
-    "venue_image": ""
-  },
-  {
-    "id": "tech-06",
-    "number": "06",
-    "name": "UI/UX",
-    "alias": "UI/UX",
-    "subtitle": "UI and UX DESIGN",
-    "category": "technical",
-    "team_size": "Individual",
-    "min_members": 1,
-    "max_members": 1,
-    "fee": "₹50 per head",
-    "fee_per_head": 50,
-    "fee_type": "per_head",
-    "is_team": false,
-    "tag": "Product Design",
-    "venue": "MAIN BUILDING Python Lab",
-    "timing": "10:40 AM TO 12:40 PM",
-    "description": "Design intuitive, modern digital interfaces and user experiences using industry-standard design tools.",
-    "image": "/events/event-tech-06-1789621679528-2221.png",
-    "rules": [
-      "Systems will be provided for all the participants.",
-      "The theme or topic will be announced on the spot; AI tools are strictly restricted.",
-      "Participants can use any design software (e.g., Canva, Figma).",
-      "Round 1 is for designing the login page, Round 2 is for designing the dashboard.",
-      "It should be designed and submitted within the time limit.",
-      "Designs are judged on creativity, visual appeal, and relevance to the theme."
-    ],
-    "rounds": [
-      {
-        "desc": "Design smooth login, registration, and onboarding screens.",
-        "name": "Round 1: Auth & Onboarding Flow",
-        "time": "30 Mins"
-      },
-      {
-        "desc": "Create main dashboard UI with interactive prototypes.",
-        "name": "Round 2: Feature Dashboard & Interactions",
-        "time": "60 Mins"
-      }
-    ],
-    "guidelines": [
-      "Participants can bring their own laptops with Figma installed."
-    ],
-    "highlights": [
-      "Tools: Figma & Canva",
-      "AI strictly restricted",
-      "Round 1: Login page",
-      "Round 2: Dashboard"
-    ],
-    "created_at": "2026-09-24T17:45:13.299072+00:00",
-    "updated_at": "2026-09-24T17:45:13.299072+00:00",
     "venue_image": ""
   }
 ]
