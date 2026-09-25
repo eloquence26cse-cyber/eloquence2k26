@@ -332,7 +332,7 @@
     "fee_type": "per_team",
     "is_team": true,
     "tag": "Strategy & Bidding",
-    "venue": "CSE Seminar Hall",
+    "venue": "IT smart room",
     "timing": "10:00 AM – 01:00 PM",
     "description": "Step into the world of strategy, wit, and quick decisions. Bid smart, outthink the rest, and take the win!",
     "image": "/events/event-1789617873087-3103.png",
@@ -370,7 +370,7 @@
       "₹250 per team"
     ],
     "created_at": "2026-09-16T10:16:14.674392+00:00",
-    "updated_at": "2026-09-19T11:11:13.247+00:00",
+    "updated_at": "2026-09-24T15:03:34.122+00:00",
     "venue_image": ""
   },
   {
@@ -390,7 +390,7 @@
     "tag": "Technical Presentation",
     "venue": "CSE & AIDS Smart room",
     "timing": "10:00 AM - 1:00 PM",
-    "description": "Showcase your innovative ideas and technical presentation skills using structured slide decks.",
+    "description": "Topics : \n\n1. Emerging Technologies: How Innovation Is Shaping Our Future\n\n\n2. Will AI Replace Jobs or Transform Them?\n\n\n3. Skills vs. Degree: What Matters More for Career Success?",
     "image": "/events/card_ppt_presentation-BHzUng4c.png",
     "rules": [
       "Max 3 members per team; assemble 20 min before your slot",
@@ -424,7 +424,7 @@
       "₹100/head"
     ],
     "created_at": "2026-09-16T10:16:13.515539+00:00",
-    "updated_at": "2026-09-22T06:17:46.544+00:00",
+    "updated_at": "2026-09-24T07:13:13.416+00:00",
     "venue_image": ""
   },
   {
@@ -567,7 +567,8 @@
       "Only shortlisted teams from Round 1 will be eligible to advance and participate in Round 2.",
       "All submissions will be evaluated primarily on their User Interface (UI) design and quality.",
       "The competition topic or theme will be revealed on the spot at the start of the event.",
-      "Final results for both the winners and runners-up will be officially announced by the end of the event."
+      "Final results for both the winners and runners-up will be officially announced by the end of the event.",
+      "Note: This event is purely based on using AI tools and prompts"
     ],
     "rounds": [
       {
@@ -590,7 +591,7 @@
       "Round 2: Overall website"
     ],
     "created_at": "2026-09-16T10:16:13.942986+00:00",
-    "updated_at": "2026-09-19T11:12:33.261+00:00",
+    "updated_at": "2026-09-24T14:54:48.043+00:00",
     "venue_image": ""
   },
   {
@@ -638,32 +639,5 @@
     "created_at": "2026-09-22T06:48:29.559452+00:00",
     "updated_at": "2026-09-23T05:59:33.694+00:00",
     "venue_image": ""
-  },
-  {
-    "id": "tech-06",
-    "number": "99",
-    "name": "UI/UX",
-    "alias": null,
-    "subtitle": null,
-    "category": "technical",
-    "team_size": "Individual",
-    "min_members": 1,
-    "max_members": 1,
-    "fee": null,
-    "fee_per_head": 50,
-    "fee_type": "per_head",
-    "is_team": false,
-    "tag": null,
-    "venue": null,
-    "timing": null,
-    "description": null,
-    "image": null,
-    "rules": null,
-    "rounds": null,
-    "guidelines": null,
-    "highlights": null,
-    "created_at": "2026-09-22T10:08:40.744644+00:00",
-    "updated_at": "2026-09-22T10:08:40.744644+00:00",
-    "venue_image": null
   }
 ]
