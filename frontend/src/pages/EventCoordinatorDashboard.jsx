@@ -18,6 +18,7 @@ import {
   FaSearch, 
   FaFilter, 
   FaFileCsv, 
+  FaFilePdf,
   FaUserTie, 
   FaLayerGroup, 
   FaClock, 
@@ -485,6 +486,98 @@ export default function EventCoordinatorDashboard({ token, user, onLogout }) {
     link.click();
     document.body.removeChild(link);
     toast.success(`Exported ${eventParticipants.length} participants to CSV`);
+  };
+
+  // ── 7B. PDF Export for Allocated Event ──
+  const handleExportPDF = () => {
+    if (eventParticipants.length === 0) {
+      return toast.error('No participants found to export for this event');
+    }
+
+    const win = window.open('', '_blank');
+    if (!win) return toast.error('Please allow popups to export PDF');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${currentEvent.name} - Official Participant Sheet</title>
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 25px; color: #1e293b; line-height: 1.5; }
+          .header { text-align: center; margin-bottom: 25px; border-bottom: 3px solid #2563eb; padding-bottom: 12px; }
+          .header h1 { margin: 0; color: #1e3a8a; font-size: 24px; text-transform: uppercase; letter-spacing: 0.5px; }
+          .header p { margin: 6px 0 0 0; color: #64748b; font-size: 14px; font-weight: 600; }
+          .info-bar { display: flex; justify-content: space-between; background: #f8fafc; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0; font-size: 13px; font-weight: 600; flex-wrap: wrap; gap: 8px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+          th, td { border: 1px solid #cbd5e1; padding: 9px 12px; text-align: left; vertical-align: top; }
+          th { background: #1e293b; color: #ffffff; text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
+          tr:nth-child(even) { background: #f8fafc; }
+          .badge { display: inline-block; background: #059669; color: #ffffff; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+          .members-box { background: #f1f5f9; padding: 6px 8px; border-radius: 6px; font-size: 11px; margin-top: 3px; }
+          .footer { margin-top: 40px; display: flex; justify-content: space-between; font-size: 12px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 15px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>ELOQUENCE 2026 — OFFICIAL PARTICIPANT SHEET</h1>
+          <p>DEPARTMENT OF COMPUTER SCIENCE & ENGINEERING</p>
+        </div>
+
+        <div class="info-bar">
+          <div><strong>EVENT:</strong> ${currentEvent.name} (${(currentEvent.category || 'TECHNICAL').toUpperCase()})</div>
+          <div><strong>TOTAL PARTICIPANTS:</strong> ${eventParticipants.length}</div>
+          <div><strong>DATE:</strong> ${new Date().toLocaleDateString()}</div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 30px;">#</th>
+              <th style="width: 100px;">Ticket Code</th>
+              <th style="width: 110px;">Team Name</th>
+              <th>Lead Participant</th>
+              <th>Phone & Email</th>
+              <th>Team Members</th>
+              <th>College & Dept</th>
+              <th style="width: 70px;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${eventParticipants.map((r, i) => {
+              const members = Array.isArray(r.teamMembers) ? r.teamMembers.map(m => typeof m === 'string' ? m : m.name) : [];
+              const isPresent = (r.verified || r.attended || r.checkedIn);
+              return `
+                <tr>
+                  <td>${i + 1}</td>
+                  <td><strong>${r.registrationId || r.ticket_code || r.id || '-'}</strong></td>
+                  <td>${r.teamName ? `<span class="badge">${r.teamName}</span>` : 'Individual'}</td>
+                  <td><strong>${r.fullName || r.name || 'Anonymous'}</strong></td>
+                  <td>${r.phone || '-'}<br/><span style="color:#64748b;font-size:11px;">${r.email || '-'}</span></td>
+                  <td>
+                    ${members.length > 0 ? `<strong>${members.length + 1} Members:</strong><div class="members-box">1. ${r.fullName || r.name} (Lead)<br/>${members.map((m, idx) => `${idx + 2}. ${m}`).join('<br/>')}</div>` : 'Individual Entry'}
+                  </td>
+                  <td>${r.college || 'CAHCET'}<br/><span style="color:#64748b;font-size:11px;">${r.dept || r.department || ''} (${r.year || ''})</span></td>
+                  <td><strong>${isPresent ? 'PRESENT' : 'ABSENT'}</strong></td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          <div>Generated on: ${new Date().toLocaleString()}</div>
+          <div>Event Coordinator Signature: _______________________</div>
+        </div>
+
+        <script>
+          window.onload = function() { window.print(); };
+        </script>
+      </body>
+      </html>
+    `;
+    win.document.write(htmlContent);
+    win.document.close();
+    toast.success(`Generated PDF Participant Sheet for ${currentEvent.name}`);
   };
 
   // ── 8. Edit Event Rounds & Conductor Modal States ──
@@ -1397,7 +1490,10 @@ export default function EventCoordinatorDashboard({ token, user, onLogout }) {
                 </div>
                 
                 {eventDispatch && (
-                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <button onClick={handleExportPDF} style={S.btnSecondary}>
+                      <FaFilePdf /> Export PDF
+                    </button>
                     <button onClick={handleExportCSV} style={S.btnSecondary}>
                       <FaFileCsv /> Export CSV
                     </button>

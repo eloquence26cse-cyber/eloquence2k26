@@ -71,10 +71,16 @@
     "password": "coordinator123",
     "role": "Event Coordinator",
     "created_at": "2026-09-16T10:16:15.472958+00:00",
-    "updated_at": "2026-09-17T08:55:07.549+00:00",
-    "assigned_events": [],
+    "updated_at": "2026-09-25T10:34:38.567+00:00",
+    "assigned_events": [
+      "tech-06",
+      "tech-05"
+    ],
     "is_active": true,
-    "assignedEvents": []
+    "assignedEvents": [
+      "tech-06",
+      "tech-05"
+    ]
   },
   {
     "id": 1789462542706,
@@ -195,15 +201,19 @@
     ]
   },
   {
-    "id": 1790000537480,
-    "username": "ppt",
-    "password": "coordinator123",
-    "role": "Event Coordinator",
-    "created_at": "2026-09-21T14:22:17.693962+00:00",
-    "updated_at": "2026-09-21T14:22:17.693962+00:00",
-    "assigned_events": [],
+    "id": 1790350893603,
+    "username": "PPT",
+    "password": "coordinaor123",
+    "role": "event coordinator",
+    "created_at": "2026-09-25T15:41:33.654541+00:00",
+    "updated_at": "2026-09-25T15:42:04.769+00:00",
+    "assigned_events": [
+      "tech-01"
+    ],
     "is_active": true,
-    "assignedEvents": []
+    "assignedEvents": [
+      "tech-01"
+    ]
   },
   {
     "id": 1790059061673,
@@ -375,6 +385,21 @@
     "is_active": true,
     "assignedEvents": [
       "tech-05"
+    ]
+  },
+  {
+    "id": 1790354414362,
+    "username": "ff",
+    "password": "coordinator123",
+    "role": "event coordinator",
+    "created_at": "2026-09-25T16:40:14.4962+00:00",
+    "updated_at": "2026-09-25T16:41:50.386+00:00",
+    "assigned_events": [
+      "nontech-05"
+    ],
+    "is_active": true,
+    "assignedEvents": [
+      "nontech-05"
     ]
   }
 ]
