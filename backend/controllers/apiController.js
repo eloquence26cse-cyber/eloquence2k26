@@ -302,6 +302,8 @@ const dbToEvent = (e) => {
     rounds: e.rounds,
     guidelines: e.guidelines,
     highlights: e.highlights,
+    esportsConfig: e.esports_config || e.esportsConfig || (e.guidelines && typeof e.guidelines === 'object' && !Array.isArray(e.guidelines) ? (e.guidelines.esports_config || e.guidelines.esportsConfig) : null) || null,
+    esports_config: e.esports_config || e.esportsConfig || (e.guidelines && typeof e.guidelines === 'object' && !Array.isArray(e.guidelines) ? (e.guidelines.esports_config || e.guidelines.esportsConfig) : null) || null,
     createdAt: e.created_at || e.createdAt,
     updatedAt: e.updated_at || e.updatedAt
   };
@@ -329,6 +331,16 @@ let lastSettingsSyncTime = 0;
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL for public read-only static data
 const SETTINGS_CACHE_TTL_MS = 60 * 1000; // 60 seconds TTL for registration status
+
+exports.invalidateEventsCache = () => {
+  inMemoryEvents = null;
+  lastEventsSyncTime = 0;
+};
+
+exports.invalidateCoordinatorsCache = () => {
+  inMemoryCoordinators = null;
+  lastCoordinatorsSyncTime = 0;
+};
 
 function initServerMemoryCache() {
   try {
