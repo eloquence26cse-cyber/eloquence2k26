@@ -1,8 +1,8 @@
 {
   "isRegistrationClosed": true,
   "closedReason": "ONLINE REGISTRATIONS ARE CLOSED",
-  "onSpotNotice": "ON SPOT REGISTRATIONS WILL BE OPENED TOMORROW ON 9:00 AM",
   "closedAt": "2026-09-25T14:56:18.151+00:00",
   "closedBy": "shahid_admin",
+  "onSpotNotice": "ON SPOT REGISTRATIONS WILL BE OPENED TOMORROW ON 9:00 AM",
   "updatedAt": "2026-09-25T14:56:18.151+00:00"
 }
