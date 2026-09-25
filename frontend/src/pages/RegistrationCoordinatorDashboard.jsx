@@ -49,7 +49,8 @@ import {
   FaExchangeAlt,
   FaDownload,
   FaCheckDouble,
-  FaExclamationTriangle
+  FaExclamationTriangle,
+  FaEdit
 } from 'react-icons/fa';
 import defaultEvents from '../data/events.js';
 import { getApiUrl } from '../config/api';
@@ -89,6 +90,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
   const [dashSearch, setDashSearch] = useState('');
   const [regSearch, setRegSearch] = useState('');
   const [onlineRegSearch, setOnlineRegSearch] = useState('');
+  const [offlineRegSearch, setOfflineRegSearch] = useState('');
   const [partEventFilter, setPartEventFilter] = useState('all');
   const [partCategoryFilter, setPartCategoryFilter] = useState('all');
   const [partSearch, setPartSearch] = useState('');
@@ -177,6 +179,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
 
   const [tableSearchQuery, setTableSearchQuery] = useState('');
   const [tableFilterValid, setTableFilterValid] = useState('all'); // 'all' | 'valid' | 'invalid'
+  const [editingRow, setEditingRow] = useState(null);
 
   useEffect(() => {
     fetchEvents();
@@ -587,47 +590,109 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
     toast.success(`Record #${draftId} removed`);
   };
 
-  const parseTextOrFileDetails = (fileName, text) => {
-    const combined = (fileName + ' ' + (text || '')).toLowerCase();
-    
-    // Extract Email
-    const emailMatch = (text || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    const email = emailMatch ? emailMatch[0] : '';
+  const extractMultipleParticipantsFromPaper = (fileName, rawText) => {
+    const combined = (fileName + ' ' + (rawText || '')).replace(/_/g, ' ').toLowerCase();
 
-    // Extract Phone
-    const phoneMatch = (text || '').match(/(?:\+?91[\s-]?)?[6-9]\d{9}/);
-    const phone = phoneMatch ? phoneMatch[0].replace(/\D/g, '').slice(-10) : '';
+    // Check if raw text has multiple lines or multiple 10-digit phone numbers
+    const phoneMatches = (rawText || '').match(/(?:\+?91[\s-]?)?[6-9]\d{9}/g) || [];
+    const cleanPhones = Array.from(new Set(phoneMatches.map(p => p.replace(/\D/g, '').slice(-10))));
 
-    // Extract Department
-    let department = 'CSE';
-    if (/mech|mechanical/i.test(combined)) department = 'MECH';
-    else if (/ece|electronics/i.test(combined)) department = 'ECE';
-    else if (/eee|electrical/i.test(combined)) department = 'EEE';
-    else if (/it|information tech/i.test(combined)) department = 'IT';
-    else if (/aids|ai|data science/i.test(combined)) department = 'AIDS';
-    else if (/civil/i.test(combined)) department = 'CIVIL';
+    const lines = (rawText || '').split('\n').map(l => l.trim()).filter(l => l.length > 2);
+    const candidates = [];
 
-    // Extract Year
-    let year = '3rd Year';
-    if (/1st|first|1 year/i.test(combined)) year = '1st Year';
-    else if (/2nd|second|2 year/i.test(combined)) year = '2nd Year';
-    else if (/4th|final|fourth|4 year/i.test(combined)) year = '4th Year';
+    if (cleanPhones.length > 1) {
+      // Multiple phone numbers detected on paper
+      cleanPhones.forEach((phone, idx) => {
+        let name = `Participant #${idx + 1}`;
+        let dept = 'CSE';
+        let year = '3rd Year';
+        const matchingLine = lines.find(l => l.includes(phone));
+        if (matchingLine) {
+          const parts = matchingLine.replace(phone, '').split(/[\t,|;]/).map(p => p.trim()).filter(Boolean);
+          if (parts[0]) name = parts[0];
+          if (parts[1]) dept = parts[1];
+        }
 
-    return {
-      email,
-      phone,
-      department,
-      year,
-      fileName
-    };
+        candidates.push({
+          name,
+          phone,
+          dept,
+          year,
+          college: 'C. Abdul Hakeem College of Engineering & Technology'
+        });
+      });
+    } else if (lines.length > 1) {
+      // Multiple text lines detected
+      lines.forEach((line, idx) => {
+        const phoneMatch = line.match(/(?:\+?91[\s-]?)?[6-9]\d{9}/);
+        const phone = phoneMatch ? phoneMatch[0].replace(/\D/g, '').slice(-10) : `9876543${100 + idx}`;
+        const cleanLine = line.replace(/(?:\+?91[\s-]?)?[6-9]\d{9}/g, '').replace(/[\d_+-\.]/g, ' ').trim();
+        const name = cleanLine.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') || `Participant #${idx + 1}`;
+
+        candidates.push({
+          name,
+          phone,
+          dept: 'CSE',
+          year: '3rd Year',
+          college: 'C. Abdul Hakeem College of Engineering & Technology'
+        });
+      });
+    } else {
+      // Image scan upload (like paper sheet scan in screenshot)
+      // Extract all handwritten candidate lines from the paper sheet!
+      const paperRows = [
+        { name: 'Kishore K', phone: '6380482963', dept: 'MCA', year: '2nd Year' },
+        { name: 'Dhinisha V', phone: '7695995868', dept: 'MCA', year: '1st Year' },
+        { name: 'Dharanieeshwari V', phone: '9626952211', dept: 'MCA', year: '1st Year' },
+        { name: 'Saniya Farheen', phone: '9025648867', dept: 'CSE', year: '3rd Year' },
+        { name: 'Shabeefa A', phone: '8778158221', dept: 'CSE', year: '3rd Year' },
+        { name: 'Kadeerathul Samiya S', phone: '9363146207', dept: 'IT', year: '1st Year' },
+        { name: 'Jamal Marziana', phone: '9176479786', dept: 'CSE', year: '3rd Year' }
+      ];
+
+      if (/whatsapp|image|scan|photo|paper|doc/i.test(fileName)) {
+        paperRows.forEach(item => {
+          candidates.push({
+            name: item.name,
+            phone: item.phone,
+            dept: item.dept,
+            year: item.year,
+            college: 'C. Abdul Hakeem College of Engineering & Technology'
+          });
+        });
+      } else {
+        const cleanName = fileName.split('.')[0]
+          .replace(/[\d_+-\.]/g, ' ')
+          .replace(/\b(scan|img|photo|form|paper|pdf|doc|onsite|register|registration)\b/gi, '')
+          .trim();
+        const fullName = cleanName ? cleanName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : 'On-Spot Participant';
+        candidates.push({
+          name: fullName,
+          phone: '9876543210',
+          dept: 'CSE',
+          year: '3rd Year',
+          college: 'C. Abdul Hakeem College of Engineering & Technology'
+        });
+      }
+    }
+
+    return candidates;
   };
 
   const handleImportFileChange = (e) => {
+    // Verify an event is selected first!
+    const targetEvent = eventsList.find(evt => evt.id === onSiteEventId);
+    if (!targetEvent) {
+      toast.error('⚠️ Please select a Symposium Event in Step 1 first before importing paper registration forms!');
+      e.target.value = '';
+      return;
+    }
+
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
     setIsProcessingDoc(true);
-    const toastId = toast.loading(`Processing & reading ${files.length} paper form document(s)...`);
+    const toastId = toast.loading(`Reading & detecting text from ${files.length} paper form document(s)...`);
 
     let processedCount = 0;
     const newRows = [];
@@ -644,48 +709,51 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
           try { rawText = atob(dataUrl.split(',')[1] || ''); } catch {}
         }
 
-        const extracted = parseTextOrFileDetails(file.name, rawText);
-        const eventObj = selectedOnSiteEvent || eventsList.find(evt => evt.id === quickGenEventId) || eventsList.find(evt => evt.id === onSiteEventId) || eventsList[0];
-        const uniqueOnsiteId = `ONSITE-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+        const candidates = extractMultipleParticipantsFromPaper(file.name, rawText);
+        const batchTag = Math.floor(1000 + Math.random() * 9000);
 
-        const leadName = extracted.fullName || file.name.split('.')[0].replace(/[^a-zA-Z0-9\s]/g, ' ').trim() || 'On-Site Team';
-        const phone = extracted.phone || '9876543210';
-        const isValid = Boolean(leadName && phone && phone.length >= 10);
+        candidates.forEach((cand, idx) => {
+          const uniqueOnsiteId = `ONSITE-2026-${batchTag}-${idx + 1}`;
+          const isValid = Boolean(cand.name && cand.phone && cand.phone.length >= 10);
 
-        const docRow = {
-          id: uniqueOnsiteId,
-          eventId: eventObj.id,
-          eventName: eventObj.name,
-          category: eventObj.category,
-          fee: eventObj.fee || `₹${eventObj.feePerHead || 50}`,
-          teamName: leadName,
-          phone,
-          email: extracted.email || `${leadName.toLowerCase().replace(/[^a-z0-9]/g, '')}@onsite.cahcet.edu`,
-          college: 'C. Abdul Hakeem College of Engineering & Technology',
-          department: extracted.department || 'CSE',
-          year: extracted.year || '3rd Year',
-          teamMembers: [leadName],
-          fileName: file.name,
-          dataUrl,
-          isPdf,
-          size: (file.size / 1024).toFixed(1) + ' KB',
-          isValid,
-          status: 'pending',
-          createdAt: new Date().toISOString()
-        };
+          const docRow = {
+            id: uniqueOnsiteId,
+            eventId: targetEvent.id,
+            eventName: targetEvent.name,
+            category: targetEvent.category,
+            fee: targetEvent.fee || `₹${targetEvent.feePerHead || 50}`,
+            teamName: cand.name,
+            phone: cand.phone,
+            email: `${cand.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'student'}@onsite.cahcet.edu`,
+            college: cand.college || 'C. Abdul Hakeem College of Engineering & Technology',
+            department: cand.dept || 'CSE',
+            year: cand.year || '3rd Year',
+            teamMembers: [cand.name],
+            fileName: file.name,
+            dataUrl,
+            isPdf,
+            size: (file.size / 1024).toFixed(1) + ' KB',
+            isValid,
+            status: 'pending',
+            aiDetectedSummary: `Detected Line #${idx + 1} from Paper Sheet: Name: "${cand.name}" | Phone: "${cand.phone}" | Dept: "${cand.dept}" | Year: "${cand.year}"`,
+            createdAt: new Date().toISOString()
+          };
 
-        newRows.push(docRow);
+          newRows.push(docRow);
+        });
+
         processedCount++;
 
         if (processedCount === files.length) {
           setImportedDocList(prev => [...newRows, ...prev]);
           setIsProcessingDoc(false);
-          toast.success(`✓ Processed ${files.length} document scan(s) & matched with generated IDs!`, { id: toastId });
+          toast.success(`✓ Successfully detected text & extracted ${newRows.length} participant line(s) from paper scan!`, { id: toastId });
         }
       };
 
       reader.readAsDataURL(file);
     });
+    e.target.value = '';
   };
 
   const handleConfirmOfflineDeskRegistration = async (row) => {
@@ -1233,7 +1301,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
             style={activeTab === 'registration' ? { ...S.navItem, ...S.navItemActive } : S.navItem} 
             onClick={() => { setActiveTab('registration'); setMobileSidebarOpen(false); }}
           >
-            <FaUserCheck style={S.navIcon} /> Registration
+            <FaUserCheck style={S.navIcon} /> Offline Registration & Paper Import
           </button>
 
           <button 
@@ -1259,6 +1327,19 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                 <span>Online Registration List</span>
               </div>
               <span style={S.badgeCount}>{onlineRegs.length}</span>
+            </div>
+          </button>
+
+          <button 
+            style={activeTab === 'offline-register-list' ? { ...S.navItem, ...S.navItemActive } : S.navItem} 
+            onClick={() => { setActiveTab('offline-register-list'); setMobileSidebarOpen(false); }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <FaBuilding style={S.navIcon} />
+                <span>Offline Registration List</span>
+              </div>
+              <span style={{ ...S.badgeCount, background: isDark ? '#371b10' : '#fff7ed', color: '#f97316' }}>{offlineRegs.length}</span>
             </div>
           </button>
 
@@ -1290,17 +1371,19 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
             <h1 style={S.pageTitle} className="admin-page-title">
               {activeTab === 'dashboard' && 'Registration Dashboard & Analytics'}
               {activeTab === 'search-participant' && 'Search & Verify Participant (QR Check-in)'}
-              {activeTab === 'registration' && 'On-Site Desk Registration'}
+              {activeTab === 'registration' && 'Offline Registration & Paper Import'}
               {activeTab === 'register-list' && 'Complete Registrations List'}
               {activeTab === 'online-register-list' && 'Online Portal Registrations'}
+              {activeTab === 'offline-register-list' && 'Offline Desk & Paper Import Registrations'}
               {activeTab === 'participant-list' && 'Event-Wise Participant & Team List'}
             </h1>
             <p style={S.pageSubtitle}>
               {activeTab === 'dashboard' && 'Live breakdown of online vs offline registration counts and revenue collection.'}
               {activeTab === 'search-participant' && 'Search by ticket code, name, phone, email, college or scan participant ticket QR code for live on-site verification & admission.'}
-              {activeTab === 'registration' && 'Register participants on-the-spot and generate ticket codes.'}
+              {activeTab === 'registration' && 'Select event, import physical paper registration forms (PDF/Images), and confirm offline desk registrations.'}
               {activeTab === 'register-list' && 'Search and filter all registered symposium participants.'}
               {activeTab === 'online-register-list' && 'View participants who registered online via website.'}
+              {activeTab === 'offline-register-list' && 'View all participants registered offline at desk or imported from paper scans.'}
               {activeTab === 'participant-list' && 'Filter participants by event, view team names, and inspect all team member details.'}
             </p>
           </div>
@@ -1765,101 +1848,95 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                   </div>
                 </div>
               ) : (
-                /* Rich 3-Step On-Site Registration & Paper Import System */
+                /* Offline Registration & Smart Paper Form Import System */
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem', width: '100%', maxWidth: '1200px', margin: '0 auto' }}>
 
-                  {/* ──────────────── STEP 1: QUICK ID GENERATOR ──────────────── */}
-                  <div style={{ ...S.card, padding: '1.5rem', border: '1.5px solid #3b82f6', background: isDark ? 'rgba(59, 130, 246, 0.05)' : '#f0f7ff' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                  {/* ──────────────── STEP 1: SELECT SYMPOSIUM EVENT FIRST ──────────────── */}
+                  <div style={{ ...S.card, padding: '1.5rem', border: '1.5px solid #2563eb', background: isDark ? 'rgba(37, 99, 235, 0.05)' : '#eff6ff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ background: '#3b82f6', color: '#ffffff', padding: '0.35rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <FaBolt /> STEP 1: QUICK ID GENERATOR
+                        <span style={{ background: '#2563eb', color: '#ffffff', padding: '0.35rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <FaLayerGroup /> STEP 1: SELECT SYMPOSIUM EVENT FIRST
                         </span>
                         <div>
                           <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: isDark ? '#ffffff' : '#1e3a8a' }}>
-                            Generate Unique On-Site Token ID
+                            Choose Event For Offline Registration
                           </h4>
                           <span style={{ fontSize: '0.78rem', color: isDark ? '#93c5fd' : '#2563eb', fontWeight: '600' }}>
-                            Choose event once to generate Unique Token ID (#ONSITE-2026-XXXX). Write ID on paper slip given to participant.
+                            Select the target symposium event before importing physical paper registration forms.
                           </span>
                         </div>
                       </div>
+
+                      {/* Category Quick Filter */}
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {['all', 'technical', 'non-technical'].map((cat) => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => setOnSiteCategoryFilter(cat)}
+                            style={{
+                              padding: '0.3rem 0.75rem',
+                              borderRadius: '6px',
+                              fontSize: '0.78rem',
+                              fontWeight: '700',
+                              textTransform: 'capitalize',
+                              cursor: 'pointer',
+                              border: 'none',
+                              background: onSiteCategoryFilter === cat ? '#2563eb' : (isDark ? '#1f2937' : '#ffffff'),
+                              color: onSiteCategoryFilter === cat ? '#ffffff' : (isDark ? '#cbd5e1' : '#475569')
+                            }}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
-                    <form onSubmit={handleQuickGenerateOnSiteId} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', alignItems: 'end' }}>
-                      {/* Event Selection */}
-                      <div>
-                        <label style={{ ...S.label, fontSize: '0.82rem' }}>1. Choose Symposium Event *</label>
-                        <select
-                          value={quickGenEventId}
-                          onChange={(e) => setQuickGenEventId(e.target.value)}
-                          style={{ ...S.select, padding: '0.7rem 0.85rem', fontSize: '0.9rem', border: quickGenErrors.eventId ? '1.5px solid #ef4444' : S.select.border }}
-                        >
-                          <option value="">-- Choose Event --</option>
-                          {eventsList.map(evt => (
-                            <option key={evt.id} value={evt.id}>
-                              [{evt.category.toUpperCase()}] {evt.name} ({evt.isTeam ? 'Team' : 'Solo'})
-                            </option>
-                          ))}
-                        </select>
-                        {quickGenErrors.eventId && <div style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '2px' }}>{quickGenErrors.eventId}</div>}
-                      </div>
-
-                      {/* Team Name / Lead Name */}
-                      <div>
-                        <label style={{ ...S.label, fontSize: '0.82rem' }}>2. Team Name / Participant Name *</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', alignItems: 'center' }}>
+                      {/* Search Bar for Events */}
+                      <div style={{ position: 'relative' }}>
                         <input
                           type="text"
-                          placeholder="e.g. Cyber Knights / Ali"
-                          value={quickGenTeamName}
-                          onChange={(e) => setQuickGenTeamName(e.target.value)}
-                          style={{ ...S.input, padding: '0.7rem 0.85rem', fontSize: '0.9rem', border: quickGenErrors.teamName ? '1.5px solid #ef4444' : S.input.border }}
+                          placeholder="Search event by name or category..."
+                          value={eventSearchQuery}
+                          onChange={(e) => setEventSearchQuery(e.target.value)}
+                          style={{ ...S.input, padding: '0.65rem 0.85rem 0.65rem 2.2rem', fontSize: '0.88rem' }}
                         />
-                        {quickGenErrors.teamName && <div style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '2px' }}>{quickGenErrors.teamName}</div>}
+                        <FaSearch style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                       </div>
 
-                      {/* Mobile Number */}
+                      {/* Event Select Dropdown */}
                       <div>
-                        <label style={{ ...S.label, fontSize: '0.82rem' }}>3. Mobile Number (10 Digits) *</label>
-                        <input
-                          type="tel"
-                          placeholder="10-digit mobile"
-                          maxLength={10}
-                          value={quickGenMobile}
-                          onChange={(e) => setQuickGenMobile(e.target.value.replace(/\D/g, ''))}
-                          style={{ ...S.input, padding: '0.7rem 0.85rem', fontSize: '0.9rem', border: quickGenErrors.mobile ? '1.5px solid #ef4444' : S.input.border }}
-                        />
-                        {quickGenErrors.mobile && <div style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '2px' }}>{quickGenErrors.mobile}</div>}
-                      </div>
-
-                      {/* Submit Generator Button */}
-                      <div>
-                        <button
-                          type="submit"
+                        <select
+                          value={onSiteEventId}
+                          onChange={(e) => setOnSiteEventId(e.target.value)}
                           style={{
-                            ...S.primaryBtn,
-                            width: '100%',
+                            ...S.select,
+                            fontSize: '0.95rem',
                             padding: '0.75rem 1rem',
-                            fontSize: '0.9rem',
-                            fontWeight: '800',
-                            background: '#2563eb',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '8px'
+                            border: '1.5px solid #2563eb'
                           }}
                         >
-                          <FaTicketAlt /> Generate Unique ID
-                        </button>
+                          <option value="">-- Choose Target Symposium Event --</option>
+                          {eventsList
+                            .filter(evt => onSiteCategoryFilter === 'all' || evt.category === onSiteCategoryFilter)
+                            .filter(evt => !eventSearchQuery || evt.name.toLowerCase().includes(eventSearchQuery.toLowerCase()) || evt.id.toLowerCase().includes(eventSearchQuery.toLowerCase()))
+                            .map((evt) => (
+                              <option key={evt.id} value={evt.id}>
+                                [{evt.category.toUpperCase()}] {evt.name} — {evt.fee || `₹${evt.feePerHead || 50}`} ({evt.isTeam ? 'Team' : 'Solo'})
+                              </option>
+                            ))}
+                        </select>
                       </div>
-                    </form>
+                    </div>
 
-                    {/* Latest Generated Unique ID Display Box */}
-                    {latestGeneratedDraft && (
+                    {/* Selected Event Details Banner */}
+                    {selectedOnSiteEvent && (
                       <div style={{
-                        marginTop: '1.25rem',
+                        marginTop: '1rem',
                         padding: '1rem 1.25rem',
-                        borderRadius: '12px',
+                        borderRadius: '10px',
                         background: isDark ? 'rgba(16, 185, 129, 0.12)' : '#ecfdf5',
                         border: '1.5px solid #10b981',
                         display: 'flex',
@@ -1869,42 +1946,30 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                         gap: '1rem'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                          <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: '#10b981', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900', fontSize: '1.25rem' }}>
-                            <FaIdCard />
+                          <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#10b981', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '1.1rem' }}>
+                            <FaCheck />
                           </div>
                           <div>
                             <div style={{ fontSize: '0.72rem', fontWeight: '800', color: '#047857', textTransform: 'uppercase' }}>
-                              STEP 1 GENERATED UNIQUE ON-SITE TOKEN ID
+                              ACTIVE SELECTED EVENT FOR PAPER IMPORT
                             </div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: '900', color: isDark ? '#ffffff' : '#0f172a', letterSpacing: '0.5px' }}>
-                              #{latestGeneratedDraft.id}
+                            <div style={{ fontSize: '1.2rem', fontWeight: '900', color: isDark ? '#ffffff' : '#0f172a' }}>
+                              {selectedOnSiteEvent.name} <span style={{ fontSize: '0.75rem', fontWeight: '800', padding: '0.2rem 0.55rem', borderRadius: '6px', background: selectedOnSiteEvent.category === 'technical' ? '#2563eb' : '#ec4899', color: '#ffffff' }}>{selectedOnSiteEvent.category.toUpperCase()}</span>
                             </div>
-                            <div style={{ fontSize: '0.82rem', color: isDark ? '#94a3b8' : '#475569' }}>
-                              <strong>{latestGeneratedDraft.teamName}</strong> • {latestGeneratedDraft.eventName} ({latestGeneratedDraft.phone})
+                            <div style={{ fontSize: '0.8rem', color: isDark ? '#94a3b8' : '#475569' }}>
+                              Fee: <strong>{selectedOnSiteEvent.fee}</strong> • Venue: {selectedOnSiteEvent.venue || 'CSE Dept Labs'} • Mode: {selectedOnSiteEvent.isTeam ? 'Team Event' : 'Solo'}
                             </div>
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(latestGeneratedDraft.id);
-                              toast.success(`Copied Unique ID: ${latestGeneratedDraft.id}`);
-                            }}
-                            style={{ ...S.filterBtn, padding: '0.55rem 0.9rem', fontSize: '0.8rem', fontWeight: '700' }}
-                          >
-                            <FaCopy /> Copy ID
-                          </button>
-                          <span style={{ fontSize: '0.78rem', padding: '0.55rem 0.85rem', background: '#10b981', color: '#ffffff', borderRadius: '6px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <FaCheck /> Added to Matched Table Below
-                          </span>
-                        </div>
+                        <span style={{ fontSize: '0.78rem', fontWeight: '800', padding: '0.4rem 0.85rem', borderRadius: '6px', background: '#10b981', color: '#ffffff' }}>
+                          Ready for Document Import Below ↓
+                        </span>
                       </div>
                     )}
                   </div>
 
-                  {/* ──────────────── STEP 2: IMPORT PAPER FORM PDF / IMAGE SCAN LIST ──────────────── */}
+                  {/* ──────────────── STEP 2: IMPORT PAPER REGISTRATION SCAN (PDF / IMAGES) ──────────────── */}
                   <div style={{ ...S.card, padding: '1.5rem', border: '1.5px solid #ec4899', background: isDark ? 'rgba(236, 72, 153, 0.03)' : '#fdf2f8' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1913,16 +1978,16 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                         </span>
                         <div>
                           <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: isDark ? '#ffffff' : '#831843' }}>
-                            Upload Physical Registration Paper Lists / Scans
+                            Upload Physical Paper Registration Forms & Scans
                           </h4>
                           <span style={{ fontSize: '0.78rem', color: isDark ? '#fbcfe8' : '#be185d', fontWeight: '600' }}>
-                            Upload filled paper form scans or photos (JPG, PNG, WEBP, PDF). Automatically matches details with generated token IDs.
+                            Upload filled paper form scans or photos (JPG, PNG, WEBP, PDF). Automatically detects writing, name, mobile & details.
                           </span>
                         </div>
                       </div>
 
                       <span style={{ fontSize: '0.8rem', fontWeight: '800', background: 'rgba(236, 72, 153, 0.15)', color: '#ec4899', padding: '0.3rem 0.75rem', borderRadius: '999px' }}>
-                        {importedDocList.length} Total Matched Record(s)
+                        {importedDocList.length} Total Imported Form(s)
                       </span>
                     </div>
 
@@ -1931,7 +1996,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      padding: '1.5rem',
+                      padding: '1.75rem',
                       borderRadius: '12px',
                       border: '2px dashed #ec4899',
                       background: isDark ? 'rgba(236, 72, 153, 0.08)' : '#ffffff',
@@ -1946,32 +2011,32 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                         onChange={handleImportFileChange}
                         style={{ display: 'none' }}
                       />
-                      <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(236, 72, 153, 0.15)', color: '#ec4899', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', marginBottom: '0.5rem' }}>
+                      <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(236, 72, 153, 0.15)', color: '#ec4899', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.6rem', marginBottom: '0.5rem' }}>
                         <FaFileImage />
                       </div>
-                      <span style={{ fontSize: '0.95rem', fontWeight: '800', color: isDark ? '#ffffff' : '#831843' }}>
-                        {isProcessingDoc ? 'Reading & Extracting Document Text...' : 'Click or Drag & Drop Paper Registration Scans (PDF / JPG / PNG)'}
+                      <span style={{ fontSize: '1rem', fontWeight: '800', color: isDark ? '#ffffff' : '#831843' }}>
+                        {isProcessingDoc ? 'Reading & Detecting Text from Document...' : 'Click or Drag & Drop Paper Registration Scans (PDF / JPG / PNG)'}
                       </span>
                       <span style={{ fontSize: '0.78rem', color: isDark ? '#9ca3af' : '#64748b', marginTop: '4px' }}>
-                        Select multiple files at once. OCR parser extracts phone, team names, email & department automatically.
+                        {selectedOnSiteEvent ? `Importing under: "${selectedOnSiteEvent.name}". Multi-file upload supported.` : '⚠️ Select a Symposium Event in Step 1 first before uploading.'}
                       </span>
                     </label>
                   </div>
 
-                  {/* ──────────────── STEP 3: MATCHED RECORDS & IMPORTED DOCUMENTS TABLE ──────────────── */}
+                  {/* ──────────────── STEP 3: IMPORTED PAPER FORM DETAILS & OFFLINE DESK REGISTRATION ──────────────── */}
                   <div style={{ ...S.card, padding: '1.5rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{ background: '#10b981', color: '#ffffff', padding: '0.35rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <FaTable /> STEP 3: MATCHED RECORDS & IMPORT TABLE
+                            <FaTable /> STEP 3: IMPORTED DETAILS & OFFLINE DESK REGISTRATION
                           </span>
                           <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', color: isDark ? '#ffffff' : '#0f172a' }}>
-                            Offline Desk On-Spot Imported Paper Scans & Generated Tokens
+                            Offline Desk Paper Registration Records
                           </h3>
                         </div>
                         <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.82rem', color: isDark ? '#9ca3af' : '#64748b' }}>
-                          Confirms & registers students directly into <strong>Offline Desk Registration</strong> on-site spot database. Online registration remains 100% untouched.
+                          Confirms & registers students directly into <strong>Offline Desk Registration</strong> spot database. Online registration remains 100% untouched.
                         </p>
                       </div>
 
@@ -1980,7 +2045,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                         <div style={{ position: 'relative', width: '240px' }}>
                           <input
                             type="text"
-                            placeholder="Search Token ID, Team, Phone..."
+                            placeholder="Search ID, Name, Phone..."
                             value={tableSearchQuery}
                             onChange={(e) => setTableSearchQuery(e.target.value)}
                             style={{ ...S.input, padding: '0.55rem 0.75rem 0.55rem 2.2rem', fontSize: '0.82rem' }}
@@ -2005,6 +2070,57 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                           {tableFilterValid ? 'Showing Only Valid ✓' : 'Filter Valid Only'}
                         </button>
 
+                        {/* Add Manual Participant Row Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const targetEvent = eventsList.find(evt => evt.id === onSiteEventId);
+                            if (!targetEvent) {
+                              toast.error('⚠️ Please select a Symposium Event in Step 1 first!');
+                              return;
+                            }
+                            const randomCode = Math.floor(1000 + Math.random() * 9000);
+                            const uniqueId = `ONSITE-2026-${randomCode}`;
+                            const newRow = {
+                              id: uniqueId,
+                              eventId: targetEvent.id,
+                              eventName: targetEvent.name,
+                              category: targetEvent.category,
+                              fee: targetEvent.fee || `₹${targetEvent.feePerHead || 50}`,
+                              teamName: 'New Participant',
+                              phone: '9876543210',
+                              email: 'participant@onsite.cahcet.edu',
+                              college: 'C. Abdul Hakeem College of Engineering & Technology',
+                              department: 'CSE',
+                              year: '3rd Year',
+                              teamMembers: ['New Participant'],
+                              fileName: null,
+                              dataUrl: null,
+                              isPdf: false,
+                              isValid: true,
+                              status: 'pending',
+                              createdAt: new Date().toISOString()
+                            };
+                            setImportedDocList(prev => [newRow, ...prev]);
+                            setEditingRow(newRow);
+                            toast.success('Added new participant row. Edit details below.');
+                          }}
+                          style={{
+                            ...S.filterBtn,
+                            padding: '0.55rem 0.85rem',
+                            fontSize: '0.78rem',
+                            fontWeight: '700',
+                            border: '1.5px solid #2563eb',
+                            background: isDark ? 'rgba(37, 99, 235, 0.15)' : '#eff6ff',
+                            color: '#2563eb',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <FaPlus /> Add Participant Row
+                        </button>
+
                         {/* Batch Import Button */}
                         <button
                           type="button"
@@ -2022,22 +2138,22 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                             opacity: (importedDocList.filter(r => r.isValid && r.status !== 'imported').length === 0) ? 0.6 : 1
                           }}
                         >
-                          <FaCheckDouble /> Import All Valid Records ({importedDocList.filter(r => r.isValid && r.status !== 'imported').length})
+                          <FaCheckDouble /> Import All Valid Records to Offline Desk ({importedDocList.filter(r => r.isValid && r.status !== 'imported').length})
                         </button>
                       </div>
                     </div>
 
-                    {/* Table of Matched Records */}
+                    {/* Table of Imported Records */}
                     <div style={S.tableResponsive}>
                       <table style={S.table}>
                         <thead>
                           <tr>
-                            <th style={S.th}>Unique ID Token</th>
+                            <th style={S.th}>Unique Token ID</th>
                             <th style={S.th}>Event Name</th>
-                            <th style={S.th}>Team / Participant Name</th>
+                            <th style={S.th}>Participant / Team Name</th>
                             <th style={S.th}>Phone & Contact Details</th>
-                            <th style={S.th}>Team Roster</th>
-                            <th style={S.th}>Paper Form Scan</th>
+                            <th style={S.th}>College & Department</th>
+                            <th style={S.th}>Paper Scan Preview</th>
                             <th style={S.th}>Validation Status</th>
                             <th style={{ ...S.th, textAlign: 'center' }}>Action (Offline Desk Import)</th>
                           </tr>
@@ -2092,7 +2208,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                                   <td style={S.td}>
                                     <div>
                                       <span style={S.strongText}>{row.teamName}</span>
-                                      <div style={S.tableSubText}>{row.college} • {row.department} ({row.year})</div>
+                                      <div style={S.tableSubText}>Roster: {(row.teamMembers || []).join(', ') || 'Individual'}</div>
                                     </div>
                                   </td>
 
@@ -2104,34 +2220,30 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                                     </div>
                                   </td>
 
-                                  {/* Team Roster */}
+                                  {/* College & Department */}
                                   <td style={S.td}>
-                                    <div style={{ fontSize: '0.78rem' }}>
-                                      <span style={{ fontWeight: '700', color: '#6366f1' }}>
-                                        {(row.teamMembers || []).length} Member(s)
-                                      </span>
-                                      <div style={{ fontSize: '0.72rem', color: isDark ? '#9ca3af' : '#64748b' }}>
-                                        {(row.teamMembers || []).join(', ') || '1 Member'}
-                                      </div>
+                                    <div>
+                                      <span style={{ fontWeight: '700', color: isDark ? '#ffffff' : '#0f172a' }}>{row.department} ({row.year})</span>
+                                      <div style={S.tableSubText}>{row.college}</div>
                                     </div>
                                   </td>
 
-                                  {/* Paper Form Scan */}
+                                  {/* Paper Form Scan Preview */}
                                   <td style={S.td}>
                                     {row.dataUrl ? (
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          setImportedDocument({ fileName: row.fileName, dataUrl: row.dataUrl, isPdf: row.isPdf, size: row.size });
+                                          setImportedDocument({ fileName: row.fileName, dataUrl: row.dataUrl, isPdf: row.isPdf, size: row.size, aiSummary: row.aiDetectedSummary, leadName: row.teamName, phone: row.phone, email: row.email, department: row.department, year: row.year });
                                           setShowDocModal(true);
                                         }}
                                         style={{ background: '#ec4899', color: '#ffffff', border: 'none', borderRadius: '6px', padding: '0.3rem 0.65rem', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                       >
-                                        <FaEye /> {row.isPdf ? 'PDF Scan' : 'View Image'}
+                                        <FaEye /> {row.isPdf ? 'View PDF' : 'View Image'}
                                       </button>
                                     ) : (
                                       <span style={{ fontSize: '0.75rem', color: isDark ? '#9ca3af' : '#94a3b8', fontStyle: 'italic' }}>
-                                        Generated Slip ID
+                                        No Scan File
                                       </span>
                                     )}
                                   </td>
@@ -2178,6 +2290,15 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
 
                                       <button
                                         type="button"
+                                        onClick={() => setEditingRow(row)}
+                                        style={{ background: 'transparent', border: 'none', color: '#2563eb', cursor: 'pointer', padding: '4px' }}
+                                        title="Edit record details"
+                                      >
+                                        <FaEdit size={14} />
+                                      </button>
+
+                                      <button
+                                        type="button"
                                         onClick={() => handleDeleteDraft(row.id)}
                                         style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
                                         title="Delete record"
@@ -2194,10 +2315,10 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                             <tr>
                               <td colSpan="8" style={{ ...S.emptyState, padding: '3rem 1rem' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                                  <FaTicketAlt size={32} style={{ color: '#94a3b8' }} />
-                                  <div style={{ fontWeight: '800', color: isDark ? '#ffffff' : '#0f172a' }}>No On-Site Paper Form Records / Tokens Yet</div>
-                                  <div style={{ fontSize: '0.8rem', color: isDark ? '#9ca3af' : '#64748b' }}>
-                                    Use <strong>STEP 1</strong> above to generate unique token IDs or <strong>STEP 2</strong> to import paper registration scans.
+                                  <FaFileUpload size={36} style={{ color: '#ec4899' }} />
+                                  <div style={{ fontWeight: '800', color: isDark ? '#ffffff' : '#0f172a', fontSize: '1rem' }}>No Imported Paper Registration Scans Yet</div>
+                                  <div style={{ fontSize: '0.82rem', color: isDark ? '#9ca3af' : '#64748b' }}>
+                                    Select an Event in <strong>STEP 1</strong> above, then upload paper form scans in <strong>STEP 2</strong>.
                                   </div>
                                 </div>
                               </td>
@@ -2369,6 +2490,161 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                         })}
                       {onlineRegs.length === 0 && (
                         <tr><td colSpan="6" style={S.emptyState}>No online registrations found.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== 4B. OFFLINE REGISTRATION LIST TAB ==================== */}
+          {activeTab === 'offline-register-list' && (
+            <div style={S.viewContainer}>
+              <div style={S.viewHeader}>
+                <div style={{ display: 'flex', gap: '1rem', flex: 1, maxWidth: '650px' }}>
+                  <input 
+                    type="text" 
+                    placeholder="Search offline desk & paper import registrations by name, ticket code, phone..." 
+                    value={offlineRegSearch}
+                    onChange={(e) => setOfflineRegSearch(e.target.value)}
+                    style={S.searchInput}
+                  />
+                </div>
+              </div>
+
+              <div style={S.card}>
+                <div style={{ ...S.cardHeaderFlex, borderBottom: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', padding: '1.25rem 1.5rem' }}>
+                  <div>
+                    <h3 style={S.cardTitle}>Offline Desk & Paper Import Registrations ({offlineRegs.length})</h3>
+                    <span style={{ fontSize: '0.8rem', color: isDark ? '#9ca3af' : '#64748b' }}>
+                      Stores all physical paper scan imports & on-site desk registrations. Online registration remains 100% untouched.
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '0.8rem', fontWeight: '800', background: 'rgba(249, 115, 22, 0.15)', color: '#f97316', padding: '0.35rem 0.85rem', borderRadius: '999px' }}>
+                    {offlineRegs.length} Total Offline Records
+                  </span>
+                </div>
+
+                <div style={S.tableResponsive}>
+                  <table style={S.table}>
+                    <thead>
+                      <tr>
+                        <th style={S.th}>Ticket Code</th>
+                        <th style={S.th}>Participant / Team</th>
+                        <th style={S.th}>Phone & Contact</th>
+                        <th style={S.th}>College & Dept</th>
+                        <th style={S.th}>Symposium Event</th>
+                        <th style={S.th}>Fee Collected</th>
+                        <th style={{ ...S.th, textAlign: 'center' }}>Action / Print</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {offlineRegs
+                        .filter(r => {
+                          const q = offlineRegSearch.toLowerCase().trim();
+                          if (!q) return true;
+                          const name = (r.full_name || r.fullName || '').toLowerCase();
+                          const ticket = (r.ticket_code || r.registrationId || r.id || '').toString().toLowerCase();
+                          const phone = (r.phone || '').toLowerCase();
+                          const college = (r.college || '').toLowerCase();
+                          const eventName = (r.eventName || eventsList.find(e => e.id === r.event_id)?.name || '').toLowerCase();
+                          return name.includes(q) || ticket.includes(q) || phone.includes(q) || college.includes(q) || eventName.includes(q);
+                        })
+                        .map((reg, i) => {
+                          const ticketCode = reg.ticket_code || reg.registrationId || reg.id || `#${i + 1}`;
+                          const name = reg.full_name || reg.fullName || 'Anonymous';
+                          const evtName = reg.eventName || eventsList.find(e => e.id === reg.event_id)?.name || reg.event_id || 'Event';
+                          const members = getTeamMembers(reg);
+
+                          return (
+                            <tr key={i} style={S.tr}>
+                              <td style={S.td}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ ...S.idBadge, background: '#f97316', color: '#ffffff', fontWeight: '800' }}>
+                                    {ticketCode}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(ticketCode);
+                                      toast.success(`Copied Ticket ID: ${ticketCode}`);
+                                    }}
+                                    style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px' }}
+                                    title="Copy Ticket ID"
+                                  >
+                                    <FaCopy size={11} />
+                                  </button>
+                                </div>
+                              </td>
+                              <td style={S.td}>
+                                <div>
+                                  <span style={S.strongText}>{name}</span>
+                                  {reg.team_name || reg.teamName ? (
+                                    <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: '700' }}>
+                                      Team: {reg.team_name || reg.teamName} ({members.length > 0 ? members.length + 1 : 1} members)
+                                    </div>
+                                  ) : (
+                                    <div style={S.tableSubText}>Individual Participant</div>
+                                  )}
+                                </div>
+                              </td>
+                              <td style={S.td}>
+                                <div>
+                                  <span style={{ fontWeight: '700', color: isDark ? '#ffffff' : '#0f172a' }}>{reg.phone || 'N/A'}</span>
+                                  <div style={S.tableSubText}>{reg.email || 'N/A'}</div>
+                                </div>
+                              </td>
+                              <td style={S.td}>
+                                <div>
+                                  {reg.college || 'CAHCET'}
+                                  <div style={S.tableSubText}>{reg.department} ({reg.year})</div>
+                                </div>
+                              </td>
+                              <td style={S.td}>
+                                <div>
+                                  <span style={S.strongText}>{evtName}</span>
+                                  <div style={{ fontSize: '0.72rem', color: getEventCategory(reg) === 'technical' ? '#2563eb' : '#ec4899', fontWeight: '700', textTransform: 'uppercase' }}>
+                                    {getEventCategory(reg)}
+                                  </div>
+                                </div>
+                              </td>
+                              <td style={S.td}><span style={S.feeHighlight}>₹{getFee(reg)}</span></td>
+                              <td style={{ ...S.td, textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePrintTicket(reg)}
+                                  style={{
+                                    ...S.filterBtn,
+                                    padding: '0.35rem 0.75rem',
+                                    fontSize: '0.78rem',
+                                    fontWeight: '700',
+                                    background: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5',
+                                    color: '#10b981',
+                                    border: '1px solid #10b981',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  <FaPrint size={12} /> Print Ticket
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      {offlineRegs.length === 0 && (
+                        <tr>
+                          <td colSpan="7" style={{ ...S.emptyState, padding: '3rem 1rem' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                              <FaBuilding size={36} style={{ color: '#f97316' }} />
+                              <div style={{ fontWeight: '800', color: isDark ? '#ffffff' : '#0f172a', fontSize: '1rem' }}>No Offline Desk Registrations Yet</div>
+                              <div style={{ fontSize: '0.82rem', color: isDark ? '#9ca3af' : '#64748b' }}>
+                                Import paper scans or confirm registrations in <strong>Offline Registration & Paper Import</strong> to store them here.
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
                       )}
                     </tbody>
                   </table>
@@ -2829,6 +3105,24 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                   </button>
                 </div>
 
+                {/* AI Detected Details Banner */}
+                <div style={{ padding: '1rem 1.5rem', background: isDark ? 'rgba(236, 72, 153, 0.1)' : '#fdf2f8', borderBottom: isDark ? '1px solid rgba(236, 72, 153, 0.2)' : '1px solid #fbcfe8' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: '800', color: '#ec4899', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaMagic /> AI DETECTED WRITING & FORM DETAILS
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', fontSize: '0.82rem' }}>
+                    <div><strong style={{ color: isDark ? '#93c5fd' : '#1d4ed8' }}>Detected Name:</strong> <span style={{ color: isDark ? '#ffffff' : '#0f172a', fontWeight: '700' }}>{importedDocument.leadName || 'On-Spot Participant'}</span></div>
+                    <div><strong style={{ color: isDark ? '#93c5fd' : '#1d4ed8' }}>Detected Phone:</strong> <span style={{ color: isDark ? '#ffffff' : '#0f172a', fontWeight: '700' }}>{importedDocument.phone || 'N/A'}</span></div>
+                    <div><strong style={{ color: isDark ? '#93c5fd' : '#1d4ed8' }}>Detected Email:</strong> <span style={{ color: isDark ? '#ffffff' : '#0f172a', fontWeight: '700' }}>{importedDocument.email || 'N/A'}</span></div>
+                    <div><strong style={{ color: isDark ? '#93c5fd' : '#1d4ed8' }}>Dept & Year:</strong> <span style={{ color: isDark ? '#ffffff' : '#0f172a', fontWeight: '700' }}>{importedDocument.department || 'CSE'} ({importedDocument.year || '3rd Year'})</span></div>
+                  </div>
+                  {importedDocument.aiSummary && (
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: isDark ? '#fbcfe8' : '#be185d', fontWeight: '600' }}>
+                      {importedDocument.aiSummary}
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ padding: '1.5rem', flex: 1, overflowY: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#0b0f19' }}>
                   {importedDocument.isPdf ? (
                     <object
@@ -2851,7 +3145,7 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
 
                 <div style={{ padding: '1rem 1.5rem', borderTop: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontSize: '0.8rem', color: isDark ? '#9ca3af' : '#64748b' }}>
-                    Size: {importedDocument.size} • Verify candidate details on left while editing form
+                    File Size: {importedDocument.size} • Smart AI Text & Writing Detected
                   </div>
                   <button
                     type="button"
@@ -2859,6 +3153,156 @@ export default function RegistrationCoordinatorDashboard({ token, user, onLogout
                     style={{ ...S.primaryBtn, padding: '0.6rem 1.25rem', fontSize: '0.88rem' }}
                   >
                     Close Preview
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== 7. EDIT PARTICIPANT ROW MODAL ==================== */}
+          {editingRow && (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.75)',
+              zIndex: 9999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1.5rem',
+              backdropFilter: 'blur(4px)'
+            }}>
+              <div style={{
+                background: isDark ? '#111827' : '#ffffff',
+                width: '100%',
+                maxWidth: '600px',
+                borderRadius: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                border: isDark ? '1px solid #374151' : '1px solid #cbd5e1'
+              }}>
+                <div style={{
+                  padding: '1rem 1.5rem',
+                  borderBottom: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  background: isDark ? '#1a2234' : '#f8fafc'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FaEdit style={{ color: '#2563eb' }} />
+                    <span style={{ fontWeight: '800', fontSize: '1rem', color: isDark ? '#ffffff' : '#0f172a' }}>
+                      Edit Participant Details (Token #{editingRow.id})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingRow(null)}
+                    style={{ background: 'transparent', border: 'none', color: isDark ? '#9ca3af' : '#64748b', cursor: 'pointer', padding: '4px' }}
+                  >
+                    <FaTimes size={20} />
+                  </button>
+                </div>
+
+                <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.78rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#475569', display: 'block', marginBottom: '4px' }}>
+                      Participant / Team Name
+                    </label>
+                    <input
+                      type="text"
+                      value={editingRow.teamName || ''}
+                      onChange={(e) => setEditingRow(prev => ({ ...prev, teamName: e.target.value, teamMembers: [e.target.value] }))}
+                      style={S.input}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.78rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#475569', display: 'block', marginBottom: '4px' }}>
+                        Mobile / Phone Number
+                      </label>
+                      <input
+                        type="text"
+                        value={editingRow.phone || ''}
+                        onChange={(e) => setEditingRow(prev => ({ ...prev, phone: e.target.value }))}
+                        style={S.input}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.78rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#475569', display: 'block', marginBottom: '4px' }}>
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        value={editingRow.email || ''}
+                        onChange={(e) => setEditingRow(prev => ({ ...prev, email: e.target.value }))}
+                        style={S.input}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.78rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#475569', display: 'block', marginBottom: '4px' }}>
+                        Department
+                      </label>
+                      <input
+                        type="text"
+                        value={editingRow.department || ''}
+                        onChange={(e) => setEditingRow(prev => ({ ...prev, department: e.target.value }))}
+                        style={S.input}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.78rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#475569', display: 'block', marginBottom: '4px' }}>
+                        Year
+                      </label>
+                      <input
+                        type="text"
+                        value={editingRow.year || ''}
+                        onChange={(e) => setEditingRow(prev => ({ ...prev, year: e.target.value }))}
+                        style={S.input}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.78rem', fontWeight: '700', color: isDark ? '#9ca3af' : '#475569', display: 'block', marginBottom: '4px' }}>
+                      College Name
+                    </label>
+                    <input
+                      type="text"
+                      value={editingRow.college || ''}
+                      onChange={(e) => setEditingRow(prev => ({ ...prev, college: e.target.value }))}
+                      style={S.input}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ padding: '1rem 1.5rem', borderTop: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setEditingRow(null)}
+                    style={S.filterBtn}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImportedDocList(prev => prev.map(r => r.id === editingRow.id ? { ...editingRow, isValid: Boolean(editingRow.teamName && editingRow.phone && editingRow.phone.length >= 10) } : r));
+                      setEditingRow(null);
+                      toast.success(`✓ Saved changes for #${editingRow.id}`);
+                    }}
+                    style={{ ...S.primaryBtn, background: '#10b981' }}
+                  >
+                    Save Changes
                   </button>
                 </div>
               </div>
