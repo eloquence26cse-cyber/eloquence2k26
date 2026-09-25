@@ -16,8 +16,8 @@ const rulesData = {
     teamSize: 'Max of 3 members',
     minMembers: 1,
     maxMembers: 3,
-    venue: 'Seminar Hall & Audio Visual Hall',
-    timing: '10:00 AM – 1:00 PM',
+    venue: 'CSE & AIDS Smart room',
+    timing: '10:40 AM TO 3:00 PM',
     description: 'Present your groundbreaking ideas with clarity, innovation, and impactful slide decks before an expert jury.',
     rules: [
       'Teams are highly recommended to submit/send their PPT before the event starts.',
@@ -27,6 +27,11 @@ const rulesData = {
       'Maximum of 3 members per team.',
       'Registration fee: ₹100 per participant / head.',
       'Topics must be relevant to emerging technologies, AI, computer science, or engineering innovations.'
+    ],
+    topics: [
+      'Emerging Technologies: How Innovation Is Shaping Our Future',
+      'Will AI Replace Jobs or Transform Them?',
+      'Skills vs. Degree: What Matters More for Career Success?'
     ],
     rounds: [
       {

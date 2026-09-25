@@ -28,11 +28,13 @@ import {
   FaImage,
   FaFileUpload,
   FaCloudUploadAlt,
-  FaSpinner
+  FaSpinner,
+  FaEdit
 } from 'react-icons/fa';
 import { getApiUrl } from '../config/api';
 import defaultEvents from '../data/events.js';
 import PaymentScreenshotViewerModal from './PaymentScreenshotViewerModal.jsx';
+import EditRegistrationModal from './EditRegistrationModal.jsx';
 import { importPassPdf, saveImportedRegistrations } from '../services/api';
 
 export default function RegistrationVerification({
@@ -56,6 +58,10 @@ export default function RegistrationVerification({
 
   // Details Modal State
   const [selectedReg, setSelectedReg] = useState(null);
+
+  // Edit Registration Modal State
+  const [editingReg, setEditingReg] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // View Flag Reason Modal State
   const [viewFlagModalReg, setViewFlagModalReg] = useState(null);
@@ -1859,8 +1865,8 @@ export default function RegistrationVerification({
             </p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: '0 0 16px 16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '1060px' }}>
               <thead>
                 <tr style={{ borderBottom: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0' }}>
                   <th style={{ background: isDark ? '#111827' : '#ffffff', padding: '1rem 1.25rem', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', color: isDark ? '#9ca3af' : '#64748b', letterSpacing: '0.05em' }}>
@@ -1881,7 +1887,7 @@ export default function RegistrationVerification({
                   <th style={{ background: isDark ? '#111827' : '#ffffff', padding: '1rem 1.25rem', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', color: isDark ? '#9ca3af' : '#64748b', letterSpacing: '0.05em' }}>
                     SUBMITTED AT
                   </th>
-                  <th style={{ background: isDark ? '#111827' : '#ffffff', padding: '1rem 1.25rem', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', color: isDark ? '#9ca3af' : '#64748b', letterSpacing: '0.05em', textAlign: 'center' }}>
+                  <th style={{ background: isDark ? '#111827' : '#ffffff', padding: '1rem 1.25rem', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', color: isDark ? '#9ca3af' : '#64748b', letterSpacing: '0.05em', textAlign: 'center', minWidth: '270px' }}>
                     ACTIONS
                   </th>
                 </tr>
@@ -2327,7 +2333,34 @@ export default function RegistrationVerification({
                             <FaTrash size={11} />
                           </button>
 
-                          {/* 4. VIEW DETAILS BUTTON */}
+                          {/* 4. EDIT BUTTON */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingReg(r);
+                              setIsEditModalOpen(true);
+                            }}
+                            style={{
+                              background: isDark ? 'rgba(37, 99, 235, 0.15)' : '#eff6ff',
+                              border: isDark ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid #bfdbfe',
+                              color: isDark ? '#93c5fd' : '#2563eb',
+                              borderRadius: '6px',
+                              padding: '0.42rem 0.65rem',
+                              fontSize: '0.78rem',
+                              fontWeight: '700',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              transition: 'all 0.15s ease'
+                            }}
+                            title="Edit participant & registration details"
+                          >
+                            <FaEdit size={11} />
+                            <span>Edit</span>
+                          </button>
+
+                          {/* 5. VIEW DETAILS BUTTON */}
                           <button
                             type="button"
                             onClick={() => setSelectedReg(r)}
@@ -2850,21 +2883,48 @@ export default function RegistrationVerification({
                   </button>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedReg(null)}
-                style={{
-                  background: '#2563eb',
-                  border: 'none',
-                  color: '#ffffff',
-                  padding: '0.6rem 1.5rem',
-                  borderRadius: '8px',
-                  fontWeight: '700',
-                  cursor: 'pointer'
-                }}
-              >
-                Close
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const regToEdit = selectedReg;
+                    setSelectedReg(null);
+                    setEditingReg(regToEdit);
+                    setIsEditModalOpen(true);
+                  }}
+                  style={{
+                    background: isDark ? 'rgba(37, 99, 235, 0.2)' : '#eff6ff',
+                    border: isDark ? '1px solid #3b82f6' : '1px solid #bfdbfe',
+                    color: isDark ? '#93c5fd' : '#2563eb',
+                    padding: '0.6rem 1.25rem',
+                    borderRadius: '8px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  title="Edit registration details"
+                >
+                  <FaEdit size={13} />
+                  <span>Edit Registration</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedReg(null)}
+                  style={{
+                    background: '#2563eb',
+                    border: 'none',
+                    color: '#ffffff',
+                    padding: '0.6rem 1.5rem',
+                    borderRadius: '8px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3496,6 +3556,22 @@ export default function RegistrationVerification({
           setViewerReg(null);
         }}
         isDark={isDark}
+      />
+
+      {/* ── MODAL: EDIT REGISTRATION MODAL ─────────────────────────────── */}
+      <EditRegistrationModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingReg(null);
+        }}
+        registration={editingReg}
+        eventsList={eventsList}
+        token={token}
+        isDark={isDark}
+        onSuccess={() => {
+          if (onRefresh) onRefresh();
+        }}
       />
     </div>
   );

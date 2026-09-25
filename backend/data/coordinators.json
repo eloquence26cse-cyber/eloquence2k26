@@ -27,8 +27,7 @@
     "role": "Lead Coordinator",
     "assigned_events": [
       "tech-01",
-      "nontech-05",
-      "game:BGMI"
+      "nontech-05"
     ],
     "is_active": true,
     "display_order": 2,
@@ -148,8 +147,7 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "tech-06",
-      "tech-05"
+      "tech-06"
     ],
     "is_active": true,
     "display_order": 11,
@@ -166,8 +164,7 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "tech-06",
-      "tech-05"
+      "tech-06"
     ],
     "is_active": true,
     "display_order": 12,
@@ -286,8 +283,7 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "nontech-05",
-      "game:Free Fire"
+      "nontech-05"
     ],
     "is_active": true,
     "display_order": 19,
@@ -304,8 +300,7 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "nontech-05",
-      "game:Free Fire"
+      "nontech-05"
     ],
     "is_active": true,
     "display_order": 20,
@@ -373,8 +368,7 @@
     "year": "4th Year",
     "role": "Lead Coordinator",
     "assigned_events": [
-      "nontech-05",
-      "game:BGMI"
+      "nontech-05"
     ],
     "is_active": true,
     "display_order": 25,

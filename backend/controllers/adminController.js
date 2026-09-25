@@ -2413,6 +2413,223 @@ exports.deleteRegistration = async (req, res) => {
   }
 };
 
+/**
+ * PUT /api/admin/registrations/:id
+ * PATCH /api/admin/registrations/:id
+ * Admin & Superadmin: Edit complete participant registration details, event, team members, UTR, and status
+ */
+exports.updateRegistration = async (req, res) => {
+  const userRole = String(req.user?.role || '').toLowerCase();
+  if (userRole !== 'superadmin' && userRole !== 'admin' && !userRole.includes('verif') && !userRole.includes('coord')) {
+    return res.status(403).json({ success: false, message: 'Forbidden: Insufficient permissions to edit registrations' });
+  }
+
+  const { id } = req.params;
+  const normId = String(id || '').trim();
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normId);
+
+  const {
+    fullName, full_name,
+    email,
+    phone,
+    college,
+    department,
+    year,
+    eventId, event_id,
+    teamName, team_name,
+    membersCount, members_count,
+    teamMembers, team_members,
+    totalFee, totalAmount, total_fee,
+    paymentStatus, payment_status,
+    paymentMethod, payment_method,
+    registrationStatus, registration_status,
+    upiUtr, upi_utr, transactionId, transaction_id,
+    attendanceStatus, attendance_status,
+    isVerified, is_verified,
+    flagReason, flag_reason
+  } = req.body;
+
+  try {
+    // 1. Look up existing registration
+    let targetUUID = isUUID ? normId : null;
+    let targetTicketCode = !isUUID ? normId : null;
+    let existingReg = null;
+
+    try {
+      const lookupQuery = isUUID
+        ? supabase.from('registrations').select('*, registration_members(*)').eq('id', normId).maybeSingle()
+        : supabase.from('registrations').select('*, registration_members(*)').ilike('ticket_code', normId).maybeSingle();
+      const { data: matched } = await lookupQuery;
+      if (matched) {
+        existingReg = matched;
+        targetUUID = matched.id;
+        targetTicketCode = matched.ticket_code;
+      }
+    } catch (e) {
+      console.warn('Supabase lookup note in updateRegistration:', e.message);
+    }
+
+    if (!existingReg && !targetUUID && !targetTicketCode) {
+      return res.status(404).json({ success: false, message: 'Registration record not found' });
+    }
+
+    const regId = targetUUID || normId;
+    const ticketCode = targetTicketCode || existingReg?.ticket_code || normId;
+
+    // 2. Prepare updated payload
+    const updatePayload = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (fullName !== undefined || full_name !== undefined) {
+      updatePayload.full_name = String(fullName || full_name || '').trim();
+    }
+    if (email !== undefined) {
+      updatePayload.email = String(email || '').trim().toLowerCase();
+    }
+    if (phone !== undefined) {
+      updatePayload.phone = String(phone || '').replace(/\D/g, '').slice(-10);
+    }
+    if (college !== undefined) {
+      updatePayload.college = String(college || '').trim();
+    }
+    if (department !== undefined) {
+      updatePayload.department = String(department || '').trim();
+    }
+    if (year !== undefined) {
+      updatePayload.year = String(year || '').trim();
+    }
+    if (eventId !== undefined || event_id !== undefined) {
+      updatePayload.event_id = String(eventId || event_id || '').trim();
+    }
+    if (teamName !== undefined || team_name !== undefined) {
+      updatePayload.team_name = teamName || team_name || null;
+    }
+    if (totalFee !== undefined || totalAmount !== undefined || total_fee !== undefined) {
+      updatePayload.total_fee = Number(totalFee ?? totalAmount ?? total_fee ?? 0);
+    }
+    if (paymentStatus !== undefined || payment_status !== undefined) {
+      updatePayload.payment_status = String(paymentStatus || payment_status || 'PENDING').toUpperCase();
+    }
+    if (paymentMethod !== undefined || payment_method !== undefined) {
+      updatePayload.payment_method = String(paymentMethod || payment_method || 'ONLINE').toUpperCase();
+    }
+    if (registrationStatus !== undefined || registration_status !== undefined) {
+      updatePayload.registration_status = String(registrationStatus || registration_status || 'CONFIRMED').toUpperCase();
+    }
+    if (attendanceStatus !== undefined || attendance_status !== undefined) {
+      updatePayload.attendance_status = String(attendanceStatus || attendance_status || 'pending').toLowerCase();
+    }
+    if (isVerified !== undefined || is_verified !== undefined) {
+      const verifiedBool = Boolean(isVerified ?? is_verified);
+      updatePayload.is_verified = verifiedBool;
+      if (verifiedBool) {
+        updatePayload.verified_at = updatePayload.verified_at || new Date().toISOString();
+        updatePayload.verified_by = updatePayload.verified_by || (req.user?.username || 'Admin');
+        updatePayload.verification_status = 'verified';
+      }
+    }
+    if (flagReason !== undefined || flag_reason !== undefined) {
+      updatePayload.flag_reason = flagReason || flag_reason || null;
+    }
+
+    const cleanUtr = String(upiUtr || upi_utr || transactionId || transaction_id || '').trim();
+    if (cleanUtr) {
+      updatePayload.upi_utr = cleanUtr;
+    }
+
+    // Determine members list
+    const incomingMembers = teamMembers || team_members;
+    if (Array.isArray(incomingMembers)) {
+      updatePayload.members_count = incomingMembers.length + 1; // leader + members
+    } else if (membersCount !== undefined || members_count !== undefined) {
+      updatePayload.members_count = Number(membersCount || members_count || 1);
+    }
+
+    // 3. Update Supabase registrations table
+    const updateQuery = isUUID
+      ? supabase.from('registrations').update(updatePayload).eq('id', regId)
+      : supabase.from('registrations').update(updatePayload).ilike('ticket_code', ticketCode);
+
+    const { data: updatedDbData, error: updateErr } = await updateQuery.select('*, registration_members(*)');
+    if (updateErr) {
+      console.warn('Supabase updateRegistration error:', updateErr.message);
+    }
+
+    // 4. Update team members in registration_members table if provided
+    if (Array.isArray(incomingMembers)) {
+      try {
+        if (targetUUID) {
+          await supabase.from('registration_members').delete().eq('registration_id', targetUUID);
+        } else if (targetTicketCode) {
+          await supabase.from('registration_members').delete().ilike('ticket_code', targetTicketCode);
+        }
+
+        if (incomingMembers.length > 0) {
+          const membersToInsert = incomingMembers.map((m, idx) => ({
+            registration_id: targetUUID || undefined,
+            ticket_code: ticketCode,
+            member_number: idx + 2,
+            member_name: String(m.name || m.fullName || m.member_name || `Member ${idx + 2}`).trim(),
+            email: String(m.email || '').trim().toLowerCase() || null,
+            phone: String(m.phone || '').replace(/\D/g, '').slice(-10) || null,
+            college: String(m.college || updatePayload.college || existingReg?.college || '').trim() || null,
+            department: String(m.department || updatePayload.department || existingReg?.department || '').trim() || null,
+            year: String(m.year || updatePayload.year || existingReg?.year || '').trim() || null
+          }));
+
+          await supabase.from('registration_members').insert(membersToInsert);
+        }
+      } catch (memUpdateErr) {
+        console.warn('Error updating registration_members in updateRegistration:', memUpdateErr.message);
+      }
+    }
+
+    // 5. Fetch fresh enriched record
+    let finalRecord = null;
+    try {
+      const freshQuery = targetUUID
+        ? supabase.from('registrations').select(`*, events(id, name, alias, category, fee, venue, timing), registration_members(*)`).eq('id', targetUUID).maybeSingle()
+        : supabase.from('registrations').select(`*, events(id, name, alias, category, fee, venue, timing), registration_members(*)`).ilike('ticket_code', ticketCode).maybeSingle();
+      const { data: freshData } = await freshQuery;
+      if (freshData) {
+        const { enrichRegistrationRecord } = require('./apiController');
+        finalRecord = enrichRegistrationRecord ? enrichRegistrationRecord(freshData) : freshData;
+      }
+    } catch (freshErr) {
+      console.warn('Error fetching fresh record:', freshErr.message);
+    }
+
+    if (!finalRecord) {
+      finalRecord = {
+        ...existingReg,
+        ...updatePayload,
+        id: regId,
+        ticket_code: ticketCode,
+        ticketCode: ticketCode,
+        team_members: incomingMembers || existingReg?.team_members || []
+      };
+    }
+
+    // 6. Broadcast real-time WebSocket update
+    try {
+      const { broadcastRegistrationUpdate } = require('../config/websocket');
+      broadcastRegistrationUpdate('UPDATE', finalRecord);
+    } catch (wsErr) {
+      console.warn('WebSocket broadcast error on updateRegistration:', wsErr.message);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Registration details updated successfully',
+      data: finalRecord
+    });
+  } catch (err) {
+    console.error('Error in updateRegistration:', err);
+    return res.status(500).json({ success: false, message: 'Failed to update registration: ' + err.message });
+  }
+};
+
 // ==================== PARTICIPANT & UTR REGISTRATION VERIFICATION ====================
 exports.verifyRegistration = async (req, res) => {
   const { id } = req.params;

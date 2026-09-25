@@ -22,6 +22,7 @@ const events = [
     timing: rulesData['tech-01'].timing,
     description: rulesData['tech-01'].description,
     rules: rulesData['tech-01'].rules,
+    topics: rulesData['tech-01'].topics,
     rounds: rulesData['tech-01'].rounds,
     guidelines: rulesData['tech-01'].guidelines,
     coordinators: coordinatorsData['tech-01'].coordinators,

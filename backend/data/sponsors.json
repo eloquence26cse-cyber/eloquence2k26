@@ -1,5 +1,22 @@
 [
   {
+    "id": "sponsor-premium-02",
+    "name": "LITTLE PIRATE",
+    "company_name": "SHOP",
+    "logo": "/sponsors/sponsor-premium-02.jpg",
+    "description": "Shawarma & BBQ - Vellore's premium street food crew.\nFlame-grilled, rolled to perfection, delivered with pirate pride.",
+    "website": "https://littlepiratevellore.com/",
+    "contact_name": "Deepak Nair",
+    "contact_email": "events@stratuscloud.net",
+    "contact_phone": "9876543215",
+    "category": "Premium",
+    "display_order": 1,
+    "is_active": true,
+    "created_at": "2026-09-16T10:16:19.394851+00:00",
+    "updated_at": "2026-09-16T10:16:19.394851+00:00",
+    "location_url": "https://share.google/LeD6oLe3gbp6CpOha"
+  },
+  {
     "id": "sponsor-1789581802957",
     "name": "Sams Language Academy",
     "company_name": "Sams Language Academy",
@@ -14,40 +31,6 @@
     "is_active": true,
     "created_at": "2026-09-16T18:03:23.205688+00:00",
     "updated_at": "2026-09-17T04:07:35.77+00:00",
-    "location_url": ""
-  },
-  {
-    "id": "sponsor-elite-01",
-    "name": "RIDHI CHATS",
-    "company_name": "RIDHI CHATS",
-    "logo": "/sponsors/sponsor-1789625252690-2603.jpg",
-    "description": "CHATS FOOD SHOP",
-    "website": "",
-    "contact_name": "",
-    "contact_email": "",
-    "contact_phone": "",
-    "category": "Elite",
-    "display_order": 1,
-    "is_active": true,
-    "created_at": "2026-09-16T10:16:18.441858+00:00",
-    "updated_at": "2026-09-17T06:07:33.819+00:00",
-    "location_url": ""
-  },
-  {
-    "id": "sponsor-premium-02",
-    "name": "LITTLE PIRATE",
-    "company_name": "LITTLE PIRATE",
-    "logo": "/sponsors/sponsor-premium-02.jpg",
-    "description": "Shawarma & BBQ - Vellore's premium street food crew.\nFlame-grilled, rolled to perfection, delivered with pirate pride.",
-    "website": "https://littlepiratevellore.com/",
-    "contact_name": "",
-    "contact_email": "",
-    "contact_phone": "",
-    "category": "Premium",
-    "display_order": 1,
-    "is_active": true,
-    "created_at": "2026-09-16T10:16:19.394851+00:00",
-    "updated_at": "2026-09-16T10:16:19.394851+00:00",
     "location_url": ""
   },
   {
@@ -117,6 +100,23 @@
     "created_at": "2026-09-16T18:20:15.087589+00:00",
     "updated_at": "2026-09-17T04:08:14.504+00:00",
     "location_url": ""
+  },
+  {
+    "id": "sponsor-elite-01",
+    "name": "RIDHI CHATS",
+    "company_name": "RIDHI CHATS",
+    "logo": "/sponsors/sponsor-1789625252690-2603.jpg",
+    "description": "CHATS FOOD SHOP",
+    "website": "",
+    "contact_name": "SIYA",
+    "contact_email": "",
+    "contact_phone": "8667329339",
+    "category": "Elite",
+    "display_order": 1,
+    "is_active": true,
+    "created_at": "2026-09-16T10:16:18.441858+00:00",
+    "updated_at": "2026-09-17T06:07:33.819+00:00",
+    "location_url": "https://maps.google.com/?q=Ridhi+Chats"
   },
   {
     "id": "sponsor-1790145545217",
@@ -201,6 +201,40 @@
     "is_active": true,
     "created_at": "2026-09-23T06:47:31.173693+00:00",
     "updated_at": "2026-09-23T06:47:29.934+00:00",
+    "location_url": null
+  },
+  {
+    "id": "sponsor-1790273330402",
+    "name": "SK BROWNIE BAKES",
+    "company_name": "BROWNIE BAKES",
+    "logo": "/sponsors/sponsor-1790273214652-1629.jpg",
+    "description": "",
+    "website": "https://www.instagram.com/skbrowniehome/",
+    "contact_name": "SK Brownie",
+    "contact_email": "",
+    "contact_phone": "9092857373",
+    "category": "Standard",
+    "display_order": 13,
+    "is_active": true,
+    "created_at": "2026-09-24T18:08:54.01806+00:00",
+    "updated_at": "2026-09-24T18:08:50.402+00:00",
+    "location_url": null
+  },
+  {
+    "id": "sponsor-1790274185635",
+    "name": "JK FRESH JUICE",
+    "company_name": "FRESH JUICE & FRUIT SALES",
+    "logo": "/sponsors/sponsor-1790274177145-1598.jpg",
+    "description": "",
+    "website": "",
+    "contact_name": "",
+    "contact_email": "",
+    "contact_phone": "88706 16863",
+    "category": "Premium",
+    "display_order": 14,
+    "is_active": true,
+    "created_at": "2026-09-24T18:23:09.353942+00:00",
+    "updated_at": "2026-09-24T18:23:05.635+00:00",
     "location_url": null
   }
 ]

@@ -80,6 +80,7 @@ import { getApiUrl } from '../config/api';
 import ParticipantVerifier from '../components/ParticipantVerifier.jsx';
 import RegistrationVerification from '../components/RegistrationVerification.jsx';
 import PaymentScreenshotViewerModal from '../components/PaymentScreenshotViewerModal.jsx';
+import EditRegistrationModal from '../components/EditRegistrationModal.jsx';
 import EventRegistrationCharts from '../components/EventRegistrationCharts.jsx';
 import {
   fetchAdminHomepageCoordinators,
@@ -332,6 +333,8 @@ export default function AdminDashboard({ token, user, onLogout }) {
   const [regSearchQuery, setRegSearchQuery] = useState('');
   const [selectedRegDetails, setSelectedRegDetails] = useState(null);
   const [isRegDetailsModalOpen, setIsRegDetailsModalOpen] = useState(false);
+  const [editingReg, setEditingReg] = useState(null);
+  const [isEditRegModalOpen, setIsEditRegModalOpen] = useState(false);
   const [isOnSiteRegisterModalOpen, setIsOnSiteRegisterModalOpen] = useState(false);
   const [isDeletingRegId, setIsDeletingRegId] = useState(null);
   const [viewerScreenshotReg, setViewerScreenshotReg] = useState(null);
@@ -3385,7 +3388,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
     card: { background: isDark ? '#111827' : '#ffffff', borderRadius: '16px', border: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)', overflow: 'hidden' },
     cardHeaderFlex: { padding: '1.25rem 1.75rem', borderBottom: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0', background: isDark ? '#1a2234' : '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' },
     cardTitle: { margin: 0, fontSize: '1.05rem', fontWeight: '700', color: isDark ? '#f9fafb' : '#0f172a' },
-    tableResponsive: { overflowX: 'auto' },
+    tableResponsive: { overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
     table: { width: '100%', borderCollapse: 'collapse' },
     th: { background: isDark ? '#111827' : '#ffffff', padding: '1rem 1.75rem', textAlign: 'left', color: isDark ? '#9ca3af' : '#64748b', fontWeight: '600', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: isDark ? '1px solid #1f2937' : '1px solid #e2e8f0' },
     tr: { borderBottom: isDark ? '1px solid #1f2937' : '1px solid #f1f5f9' },
@@ -7090,8 +7093,8 @@ export default function AdminDashboard({ token, user, onLogout }) {
                   <span style={S.badgeCount}>{filteredRegistrations.length} Records</span>
                 </div>
 
-                <div style={S.tableResponsive}>
-                  <table style={S.table}>
+                <div style={{ ...S.tableResponsive, WebkitOverflowScrolling: 'touch' }}>
+                  <table style={{ ...S.table, minWidth: '1060px' }}>
                     <thead>
                       <tr>
                         <th style={S.th}>Ticket / ID</th>
@@ -7101,7 +7104,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
                         <th style={S.th}>Mode</th>
                         <th style={S.th}>Fee & Status</th>
                         <th style={{ ...S.th, whiteSpace: 'nowrap', minWidth: '135px' }}>Date & Time</th>
-                        <th style={{ ...S.th, textAlign: 'center' }}>Actions</th>
+                        <th style={{ ...S.th, textAlign: 'center', minWidth: '250px' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -7237,8 +7240,8 @@ export default function AdminDashboard({ token, user, onLogout }) {
                             </td>
 
                             {/* Actions */}
-                            <td style={{ ...S.td, textAlign: 'center' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                            <td style={{ ...S.td, textAlign: 'center', whiteSpace: 'nowrap', minWidth: '250px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'nowrap' }}>
                                 {getRegScreenshot(reg) && (
                                   <button
                                     onClick={() => setViewerScreenshotReg(reg)}
@@ -7265,6 +7268,24 @@ export default function AdminDashboard({ token, user, onLogout }) {
                                   <FaInfoCircle size={11} />
                                   <span>Details</span>
                                 </button>
+                                {!isLeadCoordinator && (
+                                  <button
+                                    onClick={() => {
+                                      setEditingReg(reg);
+                                      setIsEditRegModalOpen(true);
+                                    }}
+                                    style={{
+                                      ...S.actionBtnView,
+                                      background: isDark ? 'rgba(37, 99, 235, 0.15)' : '#eff6ff',
+                                      color: isDark ? '#60a5fa' : '#2563eb',
+                                      borderColor: isDark ? 'rgba(59, 130, 246, 0.4)' : '#bfdbfe'
+                                    }}
+                                    title="Edit registration & participant details"
+                                  >
+                                    <FaEdit size={11} />
+                                    <span>Edit</span>
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => handlePrintTicket(reg)}
                                   style={{ ...S.actionBtnView, background: isDark ? '#1e293b' : '#f8fafc', color: isDark ? '#cbd5e1' : '#475569', borderColor: isDark ? '#374151' : '#cbd5e1' }}
@@ -10318,6 +10339,28 @@ export default function AdminDashboard({ token, user, onLogout }) {
                 {!isLeadCoordinator && (
                   <button
                     type="button"
+                    onClick={() => {
+                      const regToEdit = selectedRegDetails;
+                      setIsRegDetailsModalOpen(false);
+                      setSelectedRegDetails(null);
+                      setEditingReg(regToEdit);
+                      setIsEditRegModalOpen(true);
+                    }}
+                    style={{
+                      ...S.filterBtn,
+                      background: isDark ? 'rgba(37, 99, 235, 0.2)' : '#eff6ff',
+                      color: isDark ? '#93c5fa' : '#2563eb',
+                      borderColor: isDark ? 'rgba(59, 130, 246, 0.4)' : '#bfdbfe'
+                    }}
+                    title="Edit registration details"
+                  >
+                    <FaEdit size={12} />
+                    <span>Edit Registration</span>
+                  </button>
+                )}
+                {!isLeadCoordinator && (
+                  <button
+                    type="button"
                     onClick={() => handleDeleteRegistration(selectedRegDetails)}
                     disabled={isDeletingRegId === (selectedRegDetails.id || selectedRegDetails.registrationId || selectedRegDetails.ticket_code)}
                     style={S.actionBtnDelete}
@@ -11729,6 +11772,23 @@ export default function AdminDashboard({ token, user, onLogout }) {
           setViewerScreenshotReg(null);
         }}
         isDark={isDark}
+      />
+
+      {/* Edit Registration Modal */}
+      <EditRegistrationModal
+        isOpen={isEditRegModalOpen}
+        onClose={() => {
+          setIsEditRegModalOpen(false);
+          setEditingReg(null);
+        }}
+        registration={editingReg}
+        eventsList={eventsList}
+        token={token}
+        isDark={isDark}
+        onSuccess={() => {
+          fetchRegistrations();
+          fetchDashboardData();
+        }}
       />
     </div>
   );

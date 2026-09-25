@@ -102,6 +102,8 @@ router.patch('/admin/coordinators/:id/toggle', adminController.verifyToken, admi
 router.delete('/admin/coordinators/:id', adminController.verifyToken, adminController.requireWriteAccess, adminController.deleteCoordinator);
 
 // ── Admin Registration Management ──────────────────────────────────────────
+router.put('/admin/registrations/:id', adminController.verifyToken, adminController.requireWriteAccess, adminController.updateRegistration);
+router.patch('/admin/registrations/:id', adminController.verifyToken, adminController.requireWriteAccess, adminController.updateRegistration);
 router.delete('/admin/registrations/:id', adminController.verifyToken, adminController.requireWriteAccess, adminController.deleteRegistration);
 router.get('/admin/registrations/:id/payment-screenshot', adminController.verifyToken, adminController.getRegistrationScreenshot);
 router.patch('/admin/registrations/:id/payment-status', adminController.verifyToken, adminController.updatePaymentStatus);

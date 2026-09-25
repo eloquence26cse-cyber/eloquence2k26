@@ -19,15 +19,12 @@
     "description": "Capture cinematic campus moments, dynamic event energy, and craft creative 30-60 second Instagram reels.",
     "image": "/events/event-1789617780279-2457.png",
     "rules": [
-      "No templates are allowed for photos or reels.",
-      "Use of Al is strictly prohibited in any form.",
       "Create content based on the theme announced on the spot.",
       "Photos and reels must be captured on campus on the event day.",
-      "Submit one photo and one reel (maximum 60 seconds).",
-      "Basic editing is allowed, but the original content must be captured by the participant.",
-      "Entries must be original and submitted as a WhatsApp document within the given deadline.",
-      "Avoid restricted areas and disturbances during content creation.",
-      "Content must be appropriate and suitable for all audiences."
+      "Submit one photo and one reel (max. 60s); basic editing is allowed.",
+      "Entries must be original and submitted to the given email within the deadline.",
+      "Avoid restricted areas and disturbances; content must be suitable for all.",
+      "Judging will be based on creativity, theme relevance, originality, and presentation."
     ],
     "rounds": [
       {
@@ -69,15 +66,15 @@
     "is_team": true,
     "tag": "Brain Teaser",
     "venue": "MBA SEMINAR HALL",
-    "timing": "1:30 PM to 3:00PM",
-    "description": "Decode visual rebus puzzles, connected clues, movie scenes, and pop-culture links with fast buzzer reflexes.",
+    "timing": "1:30 PM to 3:30PM",
+    "description": "Decode visual rebus puzzles, connected clues, movie scenes, and pop-culture links",
     "image": "/events/event-1789617806355-7221.png",
     "rules": [
       "Participants can participate individually, in a team of two, or in a team of up to three members.",
       "The event consists of three rounds.",
-      "Participants will have 25 seconds to answer each question in Round 1.",
-      "Participants will have 30 seconds to answer each question in Round 2.",
-      "Participants will have 40 seconds to answer each question in Round 3.",
+      "Participants will have 20 seconds to answer each question in Round 1.",
+      "Participants will have 25 seconds to answer each question in Round 2.",
+      "Participants will have 30 seconds to answer each question in Round 3.",
       "In each round, a set of words or images will be displayed, and participants must identify the common connection between them.",
       "Participants must keep their mobile phones and personal belongings inside their bags throughout the event.",
       "Any participant found engaging in malpractice or unfair practices will be immediately disqualified.",
@@ -85,14 +82,19 @@
     ],
     "rounds": [
       {
-        "desc": "Solve interconnected images to find movie or word titles.",
-        "name": "Round 1: Picture Rebus Clues",
-        "time": "20 Mins"
+        "desc": "2. Each question will have 20 seconds to answer.",
+        "name": "1. Round 1 will have 30 Questions.",
+        "time": "20 seconds"
       },
       {
-        "desc": "Complex multi-stage connection puzzles with countdown timer.",
-        "name": "Round 2: Rapid Buzzer Connection",
-        "time": "30 Mins"
+        "desc": "2. Each question will have 25 seconds to answer.",
+        "name": "1. Round 2 will have 25 questions",
+        "time": "25 seconds"
+      },
+      {
+        "desc": "2. Each question will have 30 seconds to answer.",
+        "name": "1. Round 3 will have 20 questions.",
+        "time": "30 seconds"
       }
     ],
     "guidelines": [
@@ -104,7 +106,7 @@
       "Max 3 per squad"
     ],
     "created_at": "2026-09-16T10:16:14.234348+00:00",
-    "updated_at": "2026-09-19T11:13:08.699+00:00",
+    "updated_at": "2026-09-24T17:57:04.732+00:00",
     "venue_image": ""
   },
   {
@@ -127,16 +129,12 @@
     "description": "An exciting treasure hunt across the campus uncovering riddles, cryptographic clues, and physical tokens.",
     "image": "/events/event-1789617826039-8458.png",
     "rules": [
-      "Maximum 4 members per team; report 15 minutes before your slot.",
-      "Collect the first clue from the organizers and follow the clue trail.",
-      "Stay together throughout the hunt; team splitting is not allowed.",
-      "No sharing, stealing, or tampering with clues.",
-      "Stay within the designated event area and follow organizer instructions.",
-      "Do not damage college property or event setups.",
-      "Mobile phones are allowed only if permitted by the organizers.",
-      "The team that finds the final treasure first will be declared the  winner.",
-      "The organizer's decision is final in case of any dispute.",
-      "Maintain discipline and safety throughout the game."
+      "Teams must follow a series of clues to reach the final destination.",
+      "All clues will be placed within the designated college campus areas.",
+      "Clues should be solved in sequence without skipping any stage.",
+      "Online maps, external resources, and non-team assistance are not allowed.",
+      "Participants must respect campus property and avoid restricted zones.",
+      "The first team to reach the final destination with all required proofs wins."
     ],
     "rounds": [
       {
@@ -280,18 +278,12 @@
     "description": "FIDE-timed blitz chess tournament testing deep positional play, tactical vision, and endgame nerve.",
     "image": "/events/event-1789617856983-8484.png",
     "rules": [
-      "Players must register before the tournament starts.",
-      "Players must be present at the given match time.",
-      "If a player is absent, they will be called once.",
-      "A 5-minute waiting time will be given after the scheduled match time.",
-      "If the player does not arrive within 5 minutes, they will be disqualified.",
-      "Players must follow the standard rules of chess.",
-      "Players must not receive help or advice from other players or spectators.",
-      "Touching a piece generally means the player must move that piece, if a legal move is possible.",
-      "A player must say “Check” only if required by your tournament rules; it is not mandatory under standard chess rules.",
-      "Players must respect their opponent and maintain proper discipline.",
-      "Any argument or dispute should be reported to the organizer/referee.",
-      "The organizer's decision will be followed for tournament-related disputes."
+      "Blitz format with a fixed time limit per player.",
+      "Standard FIDE rules, including touch-move, apply.",
+      "Opponents will be assigned by the organizers.",
+      "Phones, smartwatches, and electronic devices are prohibited.",
+      "Ties will be decided through a tie-breaker round.",
+      "Good sportsmanship is expected; the arbiter's decision is final."
     ],
     "rounds": [
       {
@@ -332,19 +324,18 @@
     "fee_type": "per_team",
     "is_team": true,
     "tag": "Strategy & Bidding",
-    "venue": "IT smart room",
+    "venue": "CSE Seminar Hall",
     "timing": "10:00 AM – 01:00 PM",
     "description": "Step into the world of strategy, wit, and quick decisions. Bid smart, outthink the rest, and take the win!",
     "image": "/events/event-1789617873087-3103.png",
     "rules": [
-      "A maximum of 12 teams will participate, with each team being randomly assigned an IPL franchise name.",
-      "Each team will receive a virtual purse of ₹80 Crore for the entire auction.",
-      "Each team must build a minimum squad of 16 players to remain eligible for winner evaluation.",
-      "The Playing XI must consist of at least 4 batsmen, 4 bowlers, 1 wicketkeeper, and 2 all-rounders.",
-      "A maximum of 4 overseas players is permitted in the Playing XI, with 1 Impact Player allowed.",
-      "Exceeding the allocated purse, fake bidding, collusion, or any form of malpractice will result in disqualification.",
-      "The winner will be determined based on the performance of the Playing XI according to the announced scoring criteria, along with the applicable evaluation rules.",
-      "The decision of the auctioneer and judges will be final and binding in all matters related to the auction."
+      "Strictly a team of 5 members.",
+      "Registration fee: ₹250 per team.",
+      "Virtual purse budget will be allocated to each participating team at the start.",
+      "Bidding follows sequential live auction rounds with strict countdown timers.",
+      "Exceeding allocated purse budget or bid collusion will result in penalty or disqualification.",
+      "Scoring is calculated from total squad/asset valuation, strategic diversity, and remaining funds.",
+      "Decision of the Auctioneer and judges is final and binding."
     ],
     "rounds": [
       {
@@ -389,28 +380,27 @@
     "is_team": true,
     "tag": "Technical Presentation",
     "venue": "CSE & AIDS Smart room",
-    "timing": "10:00 AM - 1:00 PM",
-    "description": "Topics : \n\n1. Emerging Technologies: How Innovation Is Shaping Our Future\n\n\n2. Will AI Replace Jobs or Transform Them?\n\n\n3. Skills vs. Degree: What Matters More for Career Success?",
+    "timing": "10:40 AM TO 3:00 PM",
+    "description": "Showcase your innovative ideas and technical presentation skills using structured slide decks.",
     "image": "/events/card_ppt_presentation-BHzUng4c.png",
     "rules": [
-      "Max 3 members per team; assemble 20 min before your slot",
-      "Submit a 300-word abstract 1 day before the event, and the final PPT (in PDF) before the event",
-      "5-min presentation + 2-min Q&A, max 6 slides",
-      "Topic must be any one from the given set of topics",
-      "Evaluated on technical content, clarity, and Q&A performance",
-      "Maintain decorum and respect other presenters",
-      "Organizers aren't liable for technical glitches; participants are responsible for their files"
+      "Submit a 300-word abstract during registration and the final PPT before the event.",
+      "Each team has 5 minutes to present, followed by a 2-minute Q&A session. Slides must be less than 7.",
+      "Content must be strictly original; any plagiarism will result in immediate disqualification.",
+      "Topic will be provided 2 days before the event.",
+      "Participants are responsible for their presentation files; organizers are not liable for technical glitches.",
+      "Presentations are evaluated on technical content, clarity, and Q&A performance."
     ],
     "rounds": [
       {
         "desc": "Initial slide deck review by panel judges.",
         "name": "Preliminary Deck Screening",
-        "time": ""
+        "time": "15 Mins"
       },
       {
         "desc": "Live presentation followed by jury Q&A.",
         "name": "Final Stage Pitch",
-        "time": ""
+        "time": "7 Mins / Team"
       }
     ],
     "guidelines": [
@@ -425,7 +415,7 @@
     ],
     "created_at": "2026-09-16T10:16:13.515539+00:00",
     "updated_at": "2026-09-24T07:13:13.416+00:00",
-    "venue_image": ""
+    "venue_image": "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=1200&q=80"
   },
   {
     "id": "tech-02",
@@ -447,25 +437,16 @@
     "description": "Test your logic and debugging prowess across intense algorithmic challenges and bug fixes.",
     "image": "/events/event-1789617913099-6240.png",
     "rules": [
-      "Round 1 is a quiz covering programming and technical questions; it will be conducted online or offline in case of technical issues.",
-      "C, Java, and Python will be the programming languages covered in the event.",
-      "50% of the participants will qualify for Round 2 based on their performance in Round 1.",
-      "Round 2 consists of 3 coding and 2 debugging questions, with 5 marks awarded for each question.",
-      "Built-in functions are not allowed, and no gadgets or unauthorized assistance are permitted; any violation will result in disqualification.",
-      "Solving coding questions will be given priority over debugging questions when determining the final evaluation.",
-      "Winners will be determined based on the marks obtained and the time taken to complete each question"
+      "Round 1 is a written test on code analysis and technical questions.",
+      "Inbuilt library should not be used. No gadgets are allowed.",
+      "Top 15 scorers advance to the final debugging round on a provided system.",
+      "Allowed languages for the final round are C, Java, and Python.",
+      "Participation can be individual or in a team of up to 2 members; any form of malpractice leads to disqualification.",
+      "Finalists are ranked by problems solved and time taken."
     ],
     "rounds": [
-      {
-        "desc": "MCQs covering syntax, complexity, and output prediction.",
-        "name": "Round 1: Written Logic Test",
-        "time": "30 Mins"
-      },
-      {
-        "desc": "Fix broken code snippets and solve competitive problems.",
-        "name": "Round 2: Live Bug Hunting & Coding",
-        "time": "60 Mins"
-      }
+      "Round 1: Written Logic Test: MCQs covering syntax, complexity, and output prediction.",
+      "Round 2: Live Bug Hunting & Coding: Fix broken code snippets and solve competitive problems."
     ],
     "guidelines": [
       "Desktop PCs will be provided with offline compilers.",
@@ -500,17 +481,10 @@
     "description": "Rapid-fire online technology trivia covering computer fundamentals, latest trends, AI, and IT giants.",
     "image": "/events/event-1789617928386-8030.png",
     "rules": [
-      "Participants can participate individually only",
-      "Round 1 will have 50 seconds per question, while Round 2 will have 30 seconds per question.",
-      "The quiz may be conducted online or through paper and pen. For online rounds, participants must ensure a stable internet connection.",
-      "The competition will consist of 2 or 3 rounds, depending on the number of participants and available time.",
-      "All questions will be based on CSE/IT-related domains, including Programming, Networking, Databases, and other technology-related areas.",
-      "Any communication, gestures, signals, or actions with other participants will be considered malpractice and may lead to disqualification.",
-      "Only one mobile phone is allowed per participant.",
-      "Participants selected in Round 1 will proceed to Round 2.",
-      "During online rounds, switching to another website, tab, or application may result in immediate disqualification or removal from the quiz.",
-      "In case of a tie, a tie-breaker will be conducted.",
-      "The decision of the organizers will be final and binding."
+      "Screen sharing or cheating must be strictly restricted.",
+      "Questions will cover core CSE/IT domains like programming, networks, databases, and AI.",
+      "Hints from the audience are not allowed and may lead to a team's disqualification.",
+      "The quiz will consist of multiple formats, including buzzer and rapid-fire rounds."
     ],
     "rounds": [
       {
@@ -567,14 +541,13 @@
       "Only shortlisted teams from Round 1 will be eligible to advance and participate in Round 2.",
       "All submissions will be evaluated primarily on their User Interface (UI) design and quality.",
       "The competition topic or theme will be revealed on the spot at the start of the event.",
-      "Final results for both the winners and runners-up will be officially announced by the end of the event.",
-      "Note: This event is purely based on using AI tools and prompts"
+      "Final results for both the winners and runners-up will be officially announced by the end of the event."
     ],
     "rounds": [
       {
         "desc": "Design a pixel-perfect hero and feature section on given theme.",
         "name": "Round 1: Responsive Landing Page",
-        "time": "45 Mins"
+        "time": "30 Mins"
       },
       {
         "desc": "Complete interactive web application with generated UI assets.",
@@ -591,7 +564,7 @@
       "Round 2: Overall website"
     ],
     "created_at": "2026-09-16T10:16:13.942986+00:00",
-    "updated_at": "2026-09-24T14:54:48.043+00:00",
+    "updated_at": "2026-09-25T03:35:57.069+00:00",
     "venue_image": ""
   },
   {

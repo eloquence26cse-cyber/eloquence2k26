@@ -2447,3 +2447,5 @@ exports.deleteEventScore = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to delete score record' });
   }
 };
+
+exports.enrichRegistrationRecord = enrichRegistrationRecord;

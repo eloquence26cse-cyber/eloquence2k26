@@ -26,12 +26,16 @@ import {
   FaRedoAlt,
   FaWhatsapp,
   FaFire,
-  FaCrosshairs
+  FaCrosshairs,
+  FaLightbulb,
+  FaRocket,
+  FaBrain,
+  FaGraduationCap
 } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getApiUrl, getWsUrl } from '../config/api';
 import { getCachedEvents, fetchEventsData, fetchRegistrationStatus, setCachedRegistrationStatus } from '../services/api.js';
-import { findEvent, normalizeEvent } from '../utils/eventUtils.js';
+import { findEvent, normalizeEvent, normalizeEventId } from '../utils/eventUtils.js';
 import { getEventSticker } from '../data/eventStickers.js';
 import coordinatorsData from '../data/coordinator.js';
 import rulesData from '../data/rules.js';
@@ -117,6 +121,36 @@ const ESPORTS_GAMES_DATA = {
     ]
   }
 };
+
+const SLIDE_CRAFT_TOPICS = [
+  {
+    id: 1,
+    index: 1,
+    label: 'TOPIC 01',
+    title: 'Emerging Technologies: How Innovation Is Shaping Our Future',
+    category: 'Innovation & Future',
+    icon: FaRocket,
+    desc: 'Explore next-generation innovations, breakthrough engineering, and their transformative impact on the global landscape.'
+  },
+  {
+    id: 2,
+    index: 2,
+    label: 'TOPIC 02',
+    title: 'Will AI Replace Jobs or Transform Them?',
+    category: 'AI & Automation',
+    icon: FaBrain,
+    desc: 'Analyze the evolving frontier of artificial intelligence, future workforce impacts, ethics, and human-AI collaboration.'
+  },
+  {
+    id: 3,
+    index: 3,
+    label: 'TOPIC 03',
+    title: 'Skills vs. Degree: What Matters More for Career Success?',
+    category: 'Career & Industry',
+    icon: FaGraduationCap,
+    desc: 'Examine industry demands, hands-on technical proficiencies, practical problem-solving versus traditional college degrees.'
+  }
+];
 
 export default function EventRulesPage({ eventId, from, categoryFilter, initialGame, onNavigate }) {
   const getStaticFallbackCoordinators = (id, currentEvent) => {
@@ -276,17 +310,30 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
     ? ESPORTS_GAMES_DATA[selectedEsportsGame]
     : null;
 
+  const normEventId = normalizeEventId(eventId || event?.id || '');
+  const isSlideCraft = Boolean(
+    normEventId === 'tech-01' ||
+    (event && (
+      event.id === 'tech-01' ||
+      /slide\s*craft/i.test(event.name || '') ||
+      /slide\s*craft/i.test(event.alias || '') ||
+      /slide\s*craft/i.test(event.title || '')
+    ))
+  );
+
   const rulesList = activeEsportsData
     ? activeEsportsData.rules
     : ((event && Array.isArray(event.rules) && event.rules.length > 0)
         ? event.rules
         : (rulesData[event?.id]?.rules || []));
 
-  const rounds = activeEsportsData
-    ? activeEsportsData.rounds
-    : ((event && Array.isArray(event.rounds) && event.rounds.length > 0)
-        ? event.rounds
-        : (rulesData[event?.id]?.rounds || []));
+  const rounds = isSlideCraft
+    ? []
+    : (activeEsportsData
+        ? activeEsportsData.rounds
+        : ((event && Array.isArray(event.rounds) && event.rounds.length > 0)
+            ? event.rounds
+            : (rulesData[event?.id]?.rounds || [])));
 
   const displayDescription = activeEsportsData
     ? activeEsportsData.description
@@ -454,7 +501,11 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
 
   const handleBackToEvents = () => {
     if (onNavigate) {
-      onNavigate('events');
+      if (from === 'home') {
+        onNavigate('home', 'events-section');
+      } else {
+        onNavigate('events', null, { categoryFilter });
+      }
     }
   };
 
@@ -529,7 +580,7 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
         >
           <button className="rules-back-btn" onClick={handleBackToEvents}>
             <FaArrowLeft style={{ marginRight: '0.45rem', verticalAlign: '-1px' }} />
-            Back to Events
+            {from === 'home' ? 'Back to Home' : 'Back to Events'}
           </button>
           <button
             className="rules-register-top-btn"
@@ -1064,50 +1115,97 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
                     )}
                   </motion.div>
 
-                  {/* Round Structure (if provided) */}
-                  {rounds.length > 0 && (
+                  {/* Round Structure (if provided) - Replaced with TOPICS for Slide Craft */}
+                  {isSlideCraft ? (
                     <motion.div
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.4, delay: 0.2 }}
-                      className="rules-card-glass rules-rounds-card"
+                      className="rules-card-glass rules-topics-card"
                     >
                       <div className="rules-card-header">
                         <h2 className="rules-card-title">
-                          <FaLayerGroup className="rules-card-icon" /> Round Structure
+                          <FaLightbulb className="rules-card-icon" /> TOPICS
                         </h2>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span className="rules-count-badge">{rounds.length} Rounds</span>
+                          <span className="rules-count-badge">3 Topics</span>
                         </div>
                       </div>
-                      <div className="rules-rounds-grid">
-                        {rounds.map((rnd, i) => {
-                          const isObj = typeof rnd === 'object' && rnd !== null;
-                          const roundTitle = isObj
-                            ? (rnd.name || rnd.title || `Round ${i + 1}`)
-                            : (typeof rnd === 'string' && rnd.includes(':') ? rnd.split(':')[0].trim() : (rnd || `Round ${i + 1}`));
-                          const roundTime = isObj
-                            ? (rnd.time || rnd.duration || '')
-                            : '';
-                          const roundDesc = isObj
-                            ? (rnd.desc || rnd.description || '')
-                            : (typeof rnd === 'string' && rnd.includes(':') ? rnd.substring(rnd.indexOf(':') + 1).trim() : '');
-
+                      <div className="rules-topics-list">
+                        {SLIDE_CRAFT_TOPICS.map((topic) => {
+                          const IconComp = topic.icon;
                           return (
-                            <div key={i} className="rules-round-card">
-                              <div className="rules-round-header">
-                                <span className="rules-round-num">
-                                  {isObj && rnd.round ? rnd.round.toUpperCase() : `ROUND ${i + 1}`}
+                            <div key={topic.id} className="rules-topic-card">
+                              <div className="rules-topic-header">
+                                <span className="rules-topic-badge">{topic.label}</span>
+                                <span className="rules-topic-tag">
+                                  <IconComp className="rules-topic-tag-icon" />
+                                  {topic.category}
                                 </span>
-                                {roundTime && <span className="rules-round-time">{roundTime}</span>}
                               </div>
-                              <h4 className="rules-round-title">{roundTitle}</h4>
-                              {roundDesc && <p className="rules-round-desc">{roundDesc}</p>}
+                              <h4 className="rules-topic-title">
+                                <span className="rules-topic-num-prefix">{topic.index}.</span>{' '}
+                                {topic.title}
+                              </h4>
+                              {topic.desc && (
+                                <p className="rules-topic-desc">{topic.desc}</p>
+                              )}
                             </div>
                           );
                         })}
                       </div>
+                      <div className="rules-topics-footer-note">
+                        <FaLightbulb style={{ color: '#39FF88', flexShrink: 0, marginTop: '2px' }} />
+                        <span>
+                          <strong>Presentation Guideline:</strong> Participants / Teams must select <strong>any one topic</strong> from above for their presentation slide deck.
+                        </span>
+                      </div>
                     </motion.div>
+                  ) : (
+                    rounds.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.2 }}
+                        className="rules-card-glass rules-rounds-card"
+                      >
+                        <div className="rules-card-header">
+                          <h2 className="rules-card-title">
+                            <FaLayerGroup className="rules-card-icon" /> Round Structure
+                          </h2>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span className="rules-count-badge">{rounds.length} Rounds</span>
+                          </div>
+                        </div>
+                        <div className="rules-rounds-grid">
+                          {rounds.map((rnd, i) => {
+                            const isObj = typeof rnd === 'object' && rnd !== null;
+                            const roundTitle = isObj
+                              ? (rnd.name || rnd.title || `Round ${i + 1}`)
+                              : (typeof rnd === 'string' && rnd.includes(':') ? rnd.split(':')[0].trim() : (rnd || `Round ${i + 1}`));
+                            const roundTime = isObj
+                              ? (rnd.time || rnd.duration || '')
+                              : '';
+                            const roundDesc = isObj
+                              ? (rnd.desc || rnd.description || '')
+                              : (typeof rnd === 'string' && rnd.includes(':') ? rnd.substring(rnd.indexOf(':') + 1).trim() : '');
+
+                            return (
+                              <div key={i} className="rules-round-card">
+                                <div className="rules-round-header">
+                                  <span className="rules-round-num">
+                                    {isObj && rnd.round ? rnd.round.toUpperCase() : `ROUND ${i + 1}`}
+                                  </span>
+                                  {roundTime && <span className="rules-round-time">{roundTime}</span>}
+                                </div>
+                                <h4 className="rules-round-title">{roundTitle}</h4>
+                                {roundDesc && <p className="rules-round-desc">{roundDesc}</p>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )
                   )}
 
                   {/* Card 2: Event Coordinators & Contact (Separate Card) */}
@@ -1242,7 +1340,7 @@ export default function EventRulesPage({ eventId, from, categoryFilter, initialG
       {/* Mobile Sticky Action Bar - Appears when scrolling down */}
       <div className={`rules-mobile-sticky-bar ${showMobileStickyBar ? 'is-visible' : ''}`}>
         <button className="rules-mobile-back-btn" onClick={handleBackToEvents}>
-          <FaArrowLeft style={{ marginRight: '0.45rem', verticalAlign: '-1px' }} /> Back
+          <FaArrowLeft style={{ marginRight: '0.45rem', verticalAlign: '-1px' }} /> {from === 'home' ? 'Home' : 'Back'}
         </button>
         <button
           className="rules-mobile-register-btn"

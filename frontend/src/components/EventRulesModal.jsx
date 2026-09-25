@@ -16,10 +16,44 @@ import {
   FaCheckCircle,
   FaWhatsapp,
   FaFire,
-  FaCrosshairs
+  FaCrosshairs,
+  FaLightbulb,
+  FaRocket,
+  FaBrain,
+  FaGraduationCap
 } from 'react-icons/fa';
 import { getApiUrl } from '../config/api';
 import coordinatorsData from '../data/coordinator.js';
+
+const SLIDE_CRAFT_TOPICS = [
+  {
+    id: 1,
+    index: 1,
+    label: 'TOPIC 01',
+    title: 'Emerging Technologies: How Innovation Is Shaping Our Future',
+    category: 'Innovation & Future',
+    icon: FaRocket,
+    desc: 'Explore next-generation innovations, breakthrough engineering, and their transformative impact on the global landscape.'
+  },
+  {
+    id: 2,
+    index: 2,
+    label: 'TOPIC 02',
+    title: 'Will AI Replace Jobs or Transform Them?',
+    category: 'AI & Automation',
+    icon: FaBrain,
+    desc: 'Analyze the evolving frontier of artificial intelligence, future workforce impacts, ethics, and human-AI collaboration.'
+  },
+  {
+    id: 3,
+    index: 3,
+    label: 'TOPIC 03',
+    title: 'Skills vs. Degree: What Matters More for Career Success?',
+    category: 'Career & Industry',
+    icon: FaGraduationCap,
+    desc: 'Examine industry demands, hands-on technical proficiencies, practical problem-solving versus traditional college degrees.'
+  }
+];
 
 export default function EventRulesModal({ event, isOpen, onClose, onRegister }) {
   const getStaticCoords = (ev) => {
@@ -82,7 +116,8 @@ export default function EventRulesModal({ event, isOpen, onClose, onRegister }) 
 
   const isTech = event.category === 'technical';
   const rules = Array.isArray(event.rules) ? event.rules : [];
-  const rounds = Array.isArray(event.rounds) ? event.rounds : [];
+  const isSlideCraft = event && (event.id === 'tech-01' || /slide\s*craft/i.test(event.name || '') || /slide\s*craft/i.test(event.alias || ''));
+  const rounds = isSlideCraft ? [] : (Array.isArray(event.rounds) ? event.rounds : []);
   const isEsports = event.id === 'nontech-05';
 
   // Only show Lead Coordinators publicly on Event Rules Modal
@@ -260,24 +295,61 @@ export default function EventRulesModal({ event, isOpen, onClose, onRegister }) 
                 )}
               </div>
 
-              {/* Rounds Breakdown (if provided) */}
-              {rounds.length > 0 && (
+              {/* Rounds Breakdown (if provided) - Replaced with TOPICS for Slide Craft */}
+              {isSlideCraft ? (
                 <div className="rules-modal-section">
                   <div className="rules-section-title">
-                    <FaLayerGroup className="rules-sec-icon" /> ROUND STRUCTURE
+                    <FaLightbulb className="rules-sec-icon" /> TOPICS
                   </div>
-                  <div className="rules-rounds-grid">
-                    {rounds.map((rnd, i) => (
-                      <div key={i} className="rules-round-card">
-                        <div className="rules-round-header">
-                          <span className="rules-round-name">{rnd.name}</span>
-                          {rnd.time && <span className="rules-round-time">{rnd.time}</span>}
+                  <div className="rules-topics-list">
+                    {SLIDE_CRAFT_TOPICS.map((topic) => {
+                      const IconComp = topic.icon;
+                      return (
+                        <div key={topic.id} className="rules-topic-card">
+                          <div className="rules-topic-header">
+                            <span className="rules-topic-badge">{topic.label}</span>
+                            <span className="rules-topic-tag">
+                              <IconComp className="rules-topic-tag-icon" />
+                              {topic.category}
+                            </span>
+                          </div>
+                          <h4 className="rules-topic-title">
+                            <span className="rules-topic-num-prefix">{topic.index}.</span>{' '}
+                            {topic.title}
+                          </h4>
+                          {topic.desc && (
+                            <p className="rules-topic-desc">{topic.desc}</p>
+                          )}
                         </div>
-                        {rnd.desc && <p className="rules-round-desc">{rnd.desc}</p>}
-                      </div>
-                    ))}
+                      );
+                    })}
+                  </div>
+                  <div className="rules-topics-footer-note" style={{ marginTop: '0.75rem' }}>
+                    <FaLightbulb style={{ color: '#39FF88', flexShrink: 0, marginTop: '2px' }} />
+                    <span>
+                      Participants / Teams must choose <strong>any one topic</strong> from above for their slide deck.
+                    </span>
                   </div>
                 </div>
+              ) : (
+                rounds.length > 0 && (
+                  <div className="rules-modal-section">
+                    <div className="rules-section-title">
+                      <FaLayerGroup className="rules-sec-icon" /> ROUND STRUCTURE
+                    </div>
+                    <div className="rules-rounds-grid">
+                      {rounds.map((rnd, i) => (
+                        <div key={i} className="rules-round-card">
+                          <div className="rules-round-header">
+                            <span className="rules-round-name">{rnd.name}</span>
+                            {rnd.time && <span className="rules-round-time">{rnd.time}</span>}
+                          </div>
+                          {rnd.desc && <p className="rules-round-desc">{rnd.desc}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
               )}
 
               {/* Coordinators Contact Section - Lead Coordinators Only */}
